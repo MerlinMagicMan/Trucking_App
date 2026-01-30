@@ -1,0 +1,23 @@
+{
+  "name": "trucking-optimization-mvp",
+  "version": "1.0.0",
+  "description": "Single-Truck Optimization MVP for reefer owner-operators",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "dev:backend": "cd backend && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000",
+    "dev:frontend": "cd frontend && npm run dev",
+    "test": "cd backend && pytest tests/ -v",
+    "test:watch": "cd backend && pytest-watch tests/",
+    "install:all": "cd backend && pip install -r requirements.txt && cd ../frontend && npm install",
+    "db:migrate": "cd backend && alembic upgrade head",
+    "db:reset": "cd backend && alembic downgrade base && alembic upgrade head"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  }
+}
