@@ -5,7 +5,7 @@ import pytest
 from fastapi.testclient import TestClient
 from app.main import app
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-Org-Id": "00000000-0000-0000-0000-000000000001"})
 
 
 def test_health_endpoint():
@@ -28,6 +28,7 @@ def test_connectors_health_endpoint():
     assert len(data['connectors']) >= 2  # At least truckstop and dat
 
 
+@pytest.mark.requires_db
 def test_optimize_endpoint_returns_recommendations():
     """POST /api/optimize should return recommendations"""
     snapshot = {
@@ -54,6 +55,7 @@ def test_optimize_endpoint_returns_recommendations():
     assert 'loads_feasible' in data
 
 
+@pytest.mark.requires_db
 def test_optimize_deterministic():
     """Same input should produce identical output"""
     snapshot = {
@@ -119,6 +121,7 @@ def test_optimize_validates_coordinates():
     assert response.status_code == 422  # Validation error
 
 
+@pytest.mark.requires_db
 def test_optimize_all_scores_in_range():
     """All reload scores should be 0-100"""
     snapshot = {
@@ -138,6 +141,7 @@ def test_optimize_all_scores_in_range():
         assert 0 <= rec['reload_score'] <= 100
 
 
+@pytest.mark.requires_db
 def test_optimize_all_have_explanations():
     """All recommendations should have >=3 explanations"""
     snapshot = {
@@ -157,6 +161,7 @@ def test_optimize_all_have_explanations():
         assert len(rec['explanations']) >= 3
 
 
+@pytest.mark.requires_db
 def test_optimize_returns_warnings_when_appropriate():
     """Should return warnings for tight HOS"""
     snapshot = {

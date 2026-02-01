@@ -4,6 +4,8 @@
 import axios from 'axios';
 import type { TruckSnapshot, OptimizeResponse } from '../types/models';
 import type { GeneratePlansRequest, GeneratePlansResponse } from '../types/plan';
+import type { Org, Truck, RouteRecord, PlanHistoryItem, PlanHistoryDetail } from '../types/org';
+import { getActiveOrgId } from './orgContext';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
@@ -12,6 +14,15 @@ const api = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+});
+
+// Inject X-Org-Id on every request
+api.interceptors.request.use((config) => {
+  const orgId = getActiveOrgId();
+  if (orgId) {
+    config.headers['X-Org-Id'] = orgId;
+  }
+  return config;
 });
 
 /**
@@ -47,9 +58,6 @@ export const checkConnectorsHealth = async (): Promise<any> => {
 
 /**
  * Generate multi-load plans (Phase 0)
- *
- * @param request - Truck snapshot + planning parameters
- * @returns 0-3 alternative plans sorted by profit_per_day
  */
 export const generatePlans = async (
   request: GeneratePlansRequest
@@ -73,6 +81,68 @@ export const generatePlans = async (
     { params }
   );
 
+  return response.data;
+};
+
+// ---- Multi-tenant endpoints (Phase 2A) ----
+
+export const fetchOrgs = async (): Promise<Org[]> => {
+  const response = await api.get<Org[]>('/api/orgs');
+  return response.data;
+};
+
+export const fetchTrucks = async (): Promise<Truck[]> => {
+  const response = await api.get<Truck[]>('/api/trucks');
+  return response.data;
+};
+
+export const createTruck = async (body: {
+  name: string;
+  equipment_type?: string;
+  home_base_city?: string;
+  home_base_state?: string;
+}): Promise<Truck> => {
+  const response = await api.post<Truck>('/api/trucks', body);
+  return response.data;
+};
+
+export const fetchRoutes = async (filters?: {
+  pickup_state?: string;
+  delivery_state?: string;
+  source?: string;
+}): Promise<RouteRecord[]> => {
+  const response = await api.get<RouteRecord[]>('/api/routes', { params: filters });
+  return response.data;
+};
+
+export const deleteRoute = async (id: string): Promise<void> => {
+  await api.delete(`/api/routes/${id}`);
+};
+
+export const importRoutes = async (routes: any[]): Promise<{ imported: number }> => {
+  const response = await api.post('/api/routes/import', { routes });
+  return response.data;
+};
+
+export const fetchPlanHistory = async (): Promise<PlanHistoryItem[]> => {
+  const response = await api.get<PlanHistoryItem[]>('/api/plans/history');
+  return response.data;
+};
+
+export const fetchPlanHistoryDetail = async (id: number): Promise<PlanHistoryDetail> => {
+  const response = await api.get<PlanHistoryDetail>(`/api/plans/history/${id}`);
+  return response.data;
+};
+
+// ---- Ingestion endpoints (Phase 3A) ----
+
+export interface IngestionStatus {
+  scheduler: { running: boolean; interval_minutes: number };
+  snapshots: { active: number; expired: number; total: number };
+}
+
+export const fetchIngestionStatus = async (): Promise<IngestionStatus> => {
+  const response = await api.get<IngestionStatus>('/api/ingestion/status');
   return response.data;
 };
 

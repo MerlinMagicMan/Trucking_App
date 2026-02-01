@@ -1,0 +1,418 @@
+/* Enterprise App Shell (Phase 2A) */
+
+.shell {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  grid-template-rows: 52px 1fr;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ---- Sidebar ---- */
+
+.shell-sidebar {
+  grid-row: 1 / -1;
+  grid-column: 1;
+  background: #0f172a;
+  color: #e2e8f0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+
+.shell-logo {
+  padding: 16px 16px 8px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #f8fafc;
+  letter-spacing: -0.02em;
+  border-bottom: 1px solid #1e293b;
+}
+
+.shell-logo span {
+  display: block;
+  font-size: 11px;
+  font-weight: 400;
+  color: #64748b;
+  margin-top: 2px;
+}
+
+.shell-nav {
+  flex: 1;
+  padding: 8px 0;
+}
+
+.shell-nav-section {
+  padding: 0 12px;
+  margin-bottom: 4px;
+}
+
+.shell-nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #475569;
+  padding: 12px 8px 4px;
+}
+
+.shell-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: #94a3b8;
+  text-decoration: none;
+  font-size: 13px;
+  font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  cursor: pointer;
+}
+
+.shell-nav-item:hover {
+  background: #1e293b;
+  color: #e2e8f0;
+}
+
+.shell-nav-item.active {
+  background: #1e40af;
+  color: #ffffff;
+}
+
+.shell-nav-item.disabled {
+  color: #334155;
+  cursor: default;
+  pointer-events: none;
+}
+
+.shell-nav-item .nav-icon {
+  width: 18px;
+  text-align: center;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.shell-nav-item .nav-badge {
+  margin-left: auto;
+  font-size: 10px;
+  background: #1e293b;
+  color: #64748b;
+  padding: 1px 6px;
+  border-radius: 8px;
+}
+
+/* ---- Top Bar ---- */
+
+.shell-topbar {
+  grid-row: 1;
+  grid-column: 2;
+  background: #ffffff;
+  border-bottom: 1px solid #e2e8f0;
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 16px;
+}
+
+.shell-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shell-topbar-right {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.shell-selector {
+  display: flex;
+  flex-direction: column;
+}
+
+.shell-selector-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.shell-selector select {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  color: #0f172a;
+  background: #f8fafc;
+  cursor: pointer;
+  min-width: 160px;
+}
+
+.shell-selector select:focus {
+  outline: none;
+  border-color: #2563eb;
+}
+
+.shell-notification-btn {
+  background: none;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 16px;
+  color: #64748b;
+}
+
+.shell-notification-btn:hover {
+  background: #f1f5f9;
+}
+
+/* ---- Canvas ---- */
+
+.shell-canvas {
+  grid-row: 2;
+  grid-column: 2;
+  overflow-y: auto;
+  background: #f8fafc;
+}
+
+/* ---- Page container (for non-workspace pages like Routes, Trucks, History) ---- */
+
+.page-container {
+  padding: 24px;
+  max-width: 1200px;
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.page-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.page-header .page-subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 2px 0 0;
+}
+
+/* Data tables */
+
+.data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.data-table th {
+  text-align: left;
+  padding: 8px 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  border-bottom: 2px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.data-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  color: #334155;
+}
+
+.data-table tr:hover td {
+  background: #f1f5f9;
+}
+
+.data-table .td-mono {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+.data-table .td-bold {
+  font-weight: 600;
+  color: #0f172a;
+}
+
+.data-table .td-green {
+  color: #059669;
+  font-weight: 600;
+}
+
+/* Buttons */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  color: #334155;
+  transition: background 0.15s;
+}
+
+.btn:hover {
+  background: #f1f5f9;
+}
+
+.btn-primary {
+  background: #2563eb;
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.btn-primary:hover {
+  background: #1d4ed8;
+}
+
+.btn-danger {
+  color: #dc2626;
+  border-color: #fecaca;
+}
+
+.btn-danger:hover {
+  background: #fef2f2;
+}
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+/* Filters row */
+
+.filters-row {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  align-items: flex-end;
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.filter-group label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+}
+
+.filter-group input,
+.filter-group select {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #0f172a;
+  min-width: 120px;
+}
+
+/* Card */
+
+.card {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+/* Form */
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.form-field label {
+  font-size: 12px;
+  font-weight: 500;
+  color: #475569;
+}
+
+.form-field input,
+.form-field select {
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+/* Empty state */
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #94a3b8;
+}
+
+.empty-state h2 {
+  font-size: 18px;
+  color: #475569;
+  margin-bottom: 8px;
+}
+
+.empty-state p {
+  font-size: 14px;
+  margin-bottom: 16px;
+}
+
+/* Active row highlight */
+
+.data-table tr.active-row td {
+  background: #eff6ff;
+}
+
+.active-badge {
+  display: inline-block;
+  font-size: 10px;
+  font-weight: 600;
+  background: #059669;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 8px;
+  text-transform: uppercase;
+}
+
+/* History replay */
+
+.history-meta {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  color: #475569;
+}
+
+.history-meta strong {
+  color: #0f172a;
+}

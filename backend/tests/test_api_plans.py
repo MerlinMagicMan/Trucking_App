@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from app.main import app
 from app.models.canonical import TruckSnapshot, HOSSnapshot
 
-client = TestClient(app)
+client = TestClient(app, headers={"X-Org-Id": "00000000-0000-0000-0000-000000000001"})
 
 
 @pytest.fixture
@@ -26,6 +26,7 @@ def sample_truck_payload():
     }
 
 
+@pytest.mark.requires_db
 def test_plans_generate_endpoint_exists(sample_truck_payload):
     """Test that the /api/plans/generate endpoint exists and accepts POST"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)
@@ -36,6 +37,7 @@ def test_plans_generate_endpoint_exists(sample_truck_payload):
     assert response.status_code in [200, 422]
 
 
+@pytest.mark.requires_db
 def test_plans_generate_returns_valid_response(sample_truck_payload):
     """Test that the endpoint returns a valid GeneratePlansResponse"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)
@@ -59,6 +61,7 @@ def test_plans_generate_returns_valid_response(sample_truck_payload):
         assert len(data["warnings"]) > 0
 
 
+@pytest.mark.requires_db
 def test_plans_have_required_fields(sample_truck_payload):
     """Test that each plan has all required fields"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)
@@ -104,6 +107,7 @@ def test_plans_have_required_fields(sample_truck_payload):
         assert "loads_analyzed" in plan
 
 
+@pytest.mark.requires_db
 def test_plans_sorted_by_profit_per_day(sample_truck_payload):
     """Test that plans are sorted by profit_per_day descending"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)
@@ -122,6 +126,7 @@ def test_plans_sorted_by_profit_per_day(sample_truck_payload):
         assert data["plans"][i]["profit_per_day_usd"] >= data["plans"][i + 1]["profit_per_day_usd"]
 
 
+@pytest.mark.requires_db
 def test_planning_horizon_parameter(sample_truck_payload):
     """Test that planning_horizon_days parameter is respected"""
     response = client.post(
@@ -141,6 +146,7 @@ def test_planning_horizon_parameter(sample_truck_payload):
         assert plan["planning_horizon_days"] == 14
 
 
+@pytest.mark.requires_db
 def test_max_plans_parameter(sample_truck_payload):
     """Test that max_plans parameter is respected"""
     response = client.post(
@@ -156,6 +162,7 @@ def test_max_plans_parameter(sample_truck_payload):
     assert len(data["plans"]) <= 2
 
 
+@pytest.mark.requires_db
 def test_radius_miles_parameter(sample_truck_payload):
     """Test that radius_miles parameter is accepted"""
     response = client.post(
@@ -219,6 +226,7 @@ def test_invalid_max_plans_too_high(sample_truck_payload):
     assert "max_plans must be between 1 and 3" in response.json()["detail"]
 
 
+@pytest.mark.requires_db
 def test_deterministic_plan_generation(sample_truck_payload):
     """Test that same input produces same plans (determinism)"""
     # Generate plans twice with same input
@@ -255,6 +263,7 @@ def test_deterministic_plan_generation(sample_truck_payload):
         assert plan1["net_profit_usd"] == plan2["net_profit_usd"]
 
 
+@pytest.mark.requires_db
 def test_all_plans_have_financial_events(sample_truck_payload):
     """Test that all plans have complete financial breakdown"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)
@@ -274,6 +283,7 @@ def test_all_plans_have_financial_events(sample_truck_payload):
         assert "revenue" in event_types
 
 
+@pytest.mark.requires_db
 def test_all_plans_have_time_blocks(sample_truck_payload):
     """Test that all plans have complete timeline"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)
@@ -295,6 +305,7 @@ def test_all_plans_have_time_blocks(sample_truck_payload):
             assert current_end <= next_start
 
 
+@pytest.mark.requires_db
 def test_metadata_includes_key_info(sample_truck_payload):
     """Test that metadata includes key generation info"""
     response = client.post("/api/plans/generate", json=sample_truck_payload)

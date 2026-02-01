@@ -33,6 +33,8 @@ class CanonicalLoad(BaseModel):
     rate_total: float = Field(..., gt=0, description="Total rate in USD")
     miles: Optional[float] = Field(None, ge=0, description="Loaded miles")
     notes: Optional[str] = Field(None, description="Additional notes")
+    pickup_geohash: Optional[str] = Field(None, description="Geohash of pickup location (precision 4)")
+    delivery_geohash: Optional[str] = Field(None, description="Geohash of delivery location (precision 4)")
 
     @field_validator('equipment')
     @classmethod

@@ -37,6 +37,9 @@ class RecommendationEvent(Base):
     # Warnings/notes
     warnings = Column(JSONB, nullable=True)
 
+    # Multi-tenant (Phase 2A)
+    org_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
+
     def __repr__(self):
         return f"<RecommendationEvent(id={self.id}, snapshot_id={self.snapshot_id}, timestamp={self.timestamp})>"
 
@@ -68,6 +71,9 @@ class PlanGenerationEvent(Base):
     loads_analyzed = Column(Integer, nullable=True)
     execution_time_ms = Column(Integer, nullable=True)
 
+    # Multi-tenant (Phase 2A)
+    org_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
+
     def __repr__(self):
         return f"<PlanGenerationEvent(id={self.id}, snapshot_id={self.snapshot_id}, plans={self.plans_generated})>"
 
@@ -92,6 +98,9 @@ class DecisionEvent(Base):
 
     # Complete plan + decision context for analysis
     full_context = Column(JSONB, nullable=False)
+
+    # Multi-tenant (Phase 2A)
+    org_id = Column(PG_UUID(as_uuid=True), nullable=True, index=True)
 
     def __repr__(self):
         return f"<DecisionEvent(id={self.id}, plan_id={self.plan_id}, decision={self.decision_type})>"

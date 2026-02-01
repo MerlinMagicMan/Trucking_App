@@ -2,7 +2,7 @@
 Main recommendation engine optimizer
 Orchestrates load fetching, HOS checking, scoring, and ranking
 """
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from datetime import datetime, timedelta
 
 from app.models.canonical import (
@@ -27,10 +27,15 @@ class OptimizationEngine:
     def __init__(self, connectors: List[BaseConnector]):
         self.connectors = connectors
 
-    def optimize(self, truck: TruckSnapshot, radius_miles: int = 250) -> OptimizeResponse:
+    def optimize(
+        self,
+        truck: TruckSnapshot,
+        radius_miles: int = 250,
+        preloaded: Optional[List[CanonicalLoad]] = None,
+    ) -> OptimizeResponse:
         """
         Main optimization flow:
-        1. Fetch loads from all connectors
+        1. Fetch loads from all connectors (or use preloaded snapshot loads)
         2. Filter for HOS feasibility (HARD CONSTRAINT)
         3. Score and rank feasible loads
         4. Return top 3 (or fewer if <3 feasible)
@@ -38,26 +43,33 @@ class OptimizationEngine:
 
         Returns deterministic results for same input
         """
-        # Step 1: Fetch loads from all connectors
+        # Step 1: Use preloaded loads (from snapshots) or fetch from connectors
         all_loads = []
         connector_metadata = []
 
-        for connector in self.connectors:
-            try:
-                loads, metadata = connector.fetch_and_normalize(
-                    truck.current_lat,
-                    truck.current_lng,
-                    radius_miles
-                )
-                all_loads.extend(loads)
-                connector_metadata.append(metadata)
-            except Exception as e:
-                # Log error but continue with other connectors
-                connector_metadata.append({
-                    "connector": connector.name,
-                    "status": "error",
-                    "error": str(e)
-                })
+        if preloaded is not None:
+            all_loads = list(preloaded)
+            connector_metadata.append({
+                "source": "load_snapshots",
+                "total_loads": len(all_loads),
+            })
+        else:
+            for connector in self.connectors:
+                try:
+                    loads, metadata = connector.fetch_and_normalize(
+                        truck.current_lat,
+                        truck.current_lng,
+                        radius_miles
+                    )
+                    all_loads.extend(loads)
+                    connector_metadata.append(metadata)
+                except Exception as e:
+                    # Log error but continue with other connectors
+                    connector_metadata.append({
+                        "connector": connector.name,
+                        "status": "error",
+                        "error": str(e)
+                    })
 
         # Sort loads by ID for deterministic ordering
         all_loads.sort(key=lambda x: x.id)

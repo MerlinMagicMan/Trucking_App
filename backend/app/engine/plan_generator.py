@@ -5,7 +5,7 @@ Transforms "best next load" into "best multi-day plan"
 This is the decision core of the Trucking Operating System.
 Plans, not loads, are the unit of truth.
 """
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
@@ -43,7 +43,8 @@ class PlanGenerator:
         truck: TruckSnapshot,
         planning_horizon_days: int = 7,
         max_plans: int = 3,
-        radius_miles: int = 250
+        radius_miles: int = 250,
+        preloaded: Optional[List[CanonicalLoad]] = None,
     ) -> List[Plan]:
         """
         Generate 2-3 alternative multi-load plans
@@ -67,6 +68,9 @@ class PlanGenerator:
         """
         all_candidate_plans = []
         loads_analyzed_total = 0
+
+        # Store preloaded for use in internal methods
+        self._preloaded = preloaded
 
         # Step 1: Get top 5 first-load candidates
         first_load_recommendations = self._get_load_candidates(truck, top_n=5, radius_miles=radius_miles)
@@ -130,18 +134,23 @@ class PlanGenerator:
         Returns:
             (recommendations, loads_analyzed)
         """
-        result = self.optimization_engine.optimize(truck, radius_miles=radius_miles)
+        result = self.optimization_engine.optimize(
+            truck, radius_miles=radius_miles, preloaded=self._preloaded
+        )
         return result.recommendations[:top_n], result.loads_analyzed
 
     def _get_load_from_recommendation(self, recommendation: Recommendation) -> CanonicalLoad:
         """
-        Get CanonicalLoad from Recommendation
-        NOTE: This requires the optimizer to store loads or we reconstruct from connectors
-        For now, we'll reconstruct by searching connectors
-
-        TODO: Optimize this in production
+        Get CanonicalLoad from Recommendation.
+        Searches preloaded snapshot loads first, then falls back to connectors.
         """
-        # Search connectors for this load
+        # Search preloaded loads first (snapshot-based)
+        if self._preloaded:
+            for load in self._preloaded:
+                if load.id == recommendation.load_id:
+                    return load
+
+        # Fallback: search connectors
         for connector in self.optimization_engine.connectors:
             loads, _ = connector.search_loads(0, 0, radius_miles=5000)  # Wide search
             for load in loads:

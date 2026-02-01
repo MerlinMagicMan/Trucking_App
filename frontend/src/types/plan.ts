@@ -89,6 +89,8 @@ export interface CanonicalLoad {
   rate_total: number;
   miles?: number;
   notes?: string;
+  pickup_geohash?: string;
+  delivery_geohash?: string;
 }
 
 export interface LoadInPlan {
@@ -165,6 +167,18 @@ export interface GeneratePlansRequest {
   planning_horizon_days?: number; // 7-14, default 7
   max_plans?: number; // 1-3, default 3
   radius_miles?: number; // default 250
+}
+
+export interface PreflightPreferences {
+  current_lat: number;
+  current_lng: number;
+  planning_horizon_days: 7 | 10 | 14;
+  prefer_regions?: string[];
+  avoid_regions?: string[];
+  home_time_target_days?: number;
+  max_deadhead_miles?: number;
+  risk_tolerance?: 'low' | 'medium' | 'high';
+  hos?: HOSSnapshot;
 }
 
 export interface GeneratePlansResponse {

@@ -4,9 +4,13 @@ API routes for optimization endpoints
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from datetime import datetime
-from typing import List
+from typing import List, Optional
+import uuid
 
-from app.models.canonical import TruckSnapshot, OptimizeResponse
+from pydantic import BaseModel
+from app.models.canonical import TruckSnapshot, OptimizeResponse, CanonicalLoad, PickupDeliveryLocation
+from app.api.dependencies import get_org_id
+from app.models.tenant import Route
 from app.models.plan import GeneratePlansResponse
 from app.models.events import RecommendationEvent, PlanGenerationEvent
 from app.db.connection import get_db
@@ -15,6 +19,8 @@ from app.engine.plan_generator import PlanGenerator
 from app.engine.economics import EconomicsEngine
 from app.connectors.truckstop import TruckstopConnector
 from app.connectors.dat import DatConnector
+from app.ingestion.snapshot_store import get_active_loads
+from app.models.snapshot import LoadSnapshot
 
 router = APIRouter()
 
@@ -36,7 +42,8 @@ plan_generator = PlanGenerator(optimization_engine, economics_engine)
 async def optimize_route(
     snapshot: TruckSnapshot,
     radius_miles: int = 250,
-    db: Session = Depends(get_db)
+    org_id: str = Depends(get_org_id),
+    db: Session = Depends(get_db),
 ):
     """
     Main optimization endpoint
@@ -45,8 +52,23 @@ async def optimize_route(
     **This is the core decision-support endpoint.**
     """
     try:
+        # Check if snapshots exist for this org; if so, use them
+        snapshot_count = db.query(LoadSnapshot).filter(
+            LoadSnapshot.org_id == org_id,
+            LoadSnapshot.status == "active",
+        ).count()
+
+        preloaded = None
+        if snapshot_count > 0:
+            preloaded = get_active_loads(
+                db, org_id,
+                truck_lat=snapshot.current_lat,
+                truck_lng=snapshot.current_lng,
+                radius_miles=radius_miles,
+            )
+
         # Run optimization
-        result = optimization_engine.optimize(snapshot, radius_miles=radius_miles)
+        result = optimization_engine.optimize(snapshot, radius_miles=radius_miles, preloaded=preloaded)
 
         # Create audit log event
         input_load_ids = []
@@ -105,7 +127,8 @@ async def optimize_route(
             full_payload=full_payload,
             loads_analyzed=result.loads_analyzed,
             loads_feasible=result.loads_feasible,
-            warnings=result.warnings
+            warnings=result.warnings,
+            org_id=org_id,
         )
 
         db.add(event)
@@ -123,7 +146,8 @@ async def generate_plans(
     planning_horizon_days: int = 7,
     max_plans: int = 3,
     radius_miles: int = 250,
-    db: Session = Depends(get_db)
+    org_id: str = Depends(get_org_id),
+    db: Session = Depends(get_db),
 ):
     """
     **Phase 0: Plan Generation Endpoint**
@@ -162,12 +186,28 @@ async def generate_plans(
                 detail="max_plans must be between 1 and 3"
             )
 
+        # Check if snapshots exist for this org; if so, use them
+        snap_count = db.query(LoadSnapshot).filter(
+            LoadSnapshot.org_id == org_id,
+            LoadSnapshot.status == "active",
+        ).count()
+
+        plan_preloaded = None
+        if snap_count > 0:
+            plan_preloaded = get_active_loads(
+                db, org_id,
+                truck_lat=snapshot.current_lat,
+                truck_lng=snapshot.current_lng,
+                radius_miles=radius_miles,
+            )
+
         # Generate plans
         plans = plan_generator.generate_plans(
             snapshot,
             planning_horizon_days=planning_horizon_days,
             max_plans=max_plans,
-            radius_miles=radius_miles
+            radius_miles=radius_miles,
+            preloaded=plan_preloaded,
         )
 
         # Build warnings
@@ -232,7 +272,8 @@ async def generate_plans(
             snapshot_id=snapshot.snapshot_id,
             planning_horizon_days=planning_horizon_days,
             plans_generated=len(plans),
-            full_payload=full_payload
+            full_payload=full_payload,
+            org_id=org_id,
         )
 
         db.add(event)
@@ -294,3 +335,108 @@ async def connectors_health():
         "connectors": health_results,
         "timestamp": datetime.utcnow().isoformat()
     }
+
+
+# ---- CSV Route Import (Phase 1.5) ----
+
+class CsvRouteRow(BaseModel):
+    pickup_city: str
+    pickup_state: str
+    delivery_city: str
+    delivery_state: str
+    miles: str
+    rate_total: str
+    route_name: Optional[str] = None
+    pickup_date: Optional[str] = None
+    delivery_date: Optional[str] = None
+
+class CsvImportRequest(BaseModel):
+    routes: List[CsvRouteRow]
+
+class CsvImportResponse(BaseModel):
+    imported: int
+    loads: List[CanonicalLoad]
+
+
+@router.post("/routes/import", response_model=CsvImportResponse)
+async def import_routes(
+    request: CsvImportRequest,
+    org_id: str = Depends(get_org_id),
+    db: Session = Depends(get_db),
+):
+    """
+    Import CSV routes as CanonicalLoad objects and persist to DB.
+    Requires X-Org-Id header.
+    """
+    loads: List[CanonicalLoad] = []
+
+    for row in request.routes:
+        try:
+            miles_val = float(row.miles) if row.miles else None
+            rate_val = float(row.rate_total) if row.rate_total else 0.0
+        except ValueError:
+            continue  # skip malformed rows
+
+        pickup_time = None
+        delivery_time = None
+        if row.pickup_date:
+            try:
+                pickup_time = datetime.fromisoformat(row.pickup_date)
+            except ValueError:
+                pass
+        if row.delivery_date:
+            try:
+                delivery_time = datetime.fromisoformat(row.delivery_date)
+            except ValueError:
+                pass
+
+        load_id = str(uuid.uuid4())
+        ext_id = f"csv-{uuid.uuid4().hex[:8]}"
+
+        # Persist to routes table
+        route_row = Route(
+            id=load_id,
+            org_id=org_id,
+            source="user_uploaded",
+            external_id=ext_id,
+            pickup_city=row.pickup_city,
+            pickup_state=row.pickup_state,
+            delivery_city=row.delivery_city,
+            delivery_state=row.delivery_state,
+            rate_total=rate_val,
+            miles=miles_val,
+            posted_at=pickup_time or datetime.utcnow(),
+        )
+        db.add(route_row)
+
+        # Build CanonicalLoad for response
+        load = CanonicalLoad(
+            id=load_id,
+            source="user_uploaded",
+            external_id=ext_id,
+            posted_at=datetime.utcnow(),
+            equipment="reefer",
+            pickup=PickupDeliveryLocation(
+                city=row.pickup_city,
+                state=row.pickup_state,
+                lat=0.0,
+                lng=0.0,
+                window_start=pickup_time,
+                window_end=pickup_time,
+            ),
+            delivery=PickupDeliveryLocation(
+                city=row.delivery_city,
+                state=row.delivery_state,
+                lat=0.0,
+                lng=0.0,
+                window_start=delivery_time,
+                window_end=delivery_time,
+            ),
+            rate_total=rate_val,
+            miles=miles_val,
+            notes=row.route_name or f"{row.pickup_city} → {row.delivery_city}",
+        )
+        loads.append(load)
+
+    db.commit()
+    return CsvImportResponse(imported=len(loads), loads=loads)

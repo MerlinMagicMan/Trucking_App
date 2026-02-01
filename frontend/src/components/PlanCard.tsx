@@ -252,7 +252,7 @@ const ExpandableSection: React.FC<ExpandableSectionProps> = ({ title, isExpanded
 );
 
 // Timeline view
-const TimelineView: React.FC<{ blocks: TimeBlock[] }> = ({ blocks }) => {
+export const TimelineView: React.FC<{ blocks: TimeBlock[] }> = ({ blocks }) => {
   const getBlockColor = (type: string) => {
     switch (type) {
       case 'drive_loaded': return '#3b82f6';
@@ -304,7 +304,7 @@ const TimelineView: React.FC<{ blocks: TimeBlock[] }> = ({ blocks }) => {
 };
 
 // Financial breakdown
-const FinancialBreakdown: React.FC<{ events: FinancialEvent[]; plan: Plan }> = ({ events, plan }) => {
+export const FinancialBreakdown: React.FC<{ events: FinancialEvent[]; plan: Plan }> = ({ events, plan }) => {
   const [expandedEvent, setExpandedEvent] = useState<number | null>(null);
 
   return (
