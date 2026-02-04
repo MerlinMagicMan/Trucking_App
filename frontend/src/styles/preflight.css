@@ -312,3 +312,38 @@
 .pf-copilot-signal { padding: var(--pf-space-sm); margin-bottom: var(--pf-space-sm); background: #fefce8; border: 1px solid #fef08a; border-radius: 4px; }
 .pf-copilot-suggestion { padding: var(--pf-space-sm); margin-bottom: var(--pf-space-sm); background: #eef2ff; border: 1px solid #c7d2fe; border-radius: 4px; }
 .pf-copilot-details { margin-top: var(--pf-space-sm); padding-top: var(--pf-space-sm); border-top: 1px solid var(--pf-border); }
+
+/* Phase 4.1: Branch plan UI */
+.pf-copilot-branch-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  border: 1px solid #c7d2fe;
+  border-radius: 4px;
+  background: #eef2ff;
+  color: #4338ca;
+  cursor: pointer;
+  font-weight: 500;
+}
+.pf-copilot-branch-btn:hover { background: #e0e7ff; }
+.pf-copilot-branch-results { margin-top: 6px; }
+.pf-copilot-branch-result {
+  padding: 6px 8px;
+  margin-top: 4px;
+  border-radius: 4px;
+  background: #f0fdf4;
+  border: 1px solid #bbf7d0;
+}
+
+/* Phase 4.2: Evaluation history timeline */
+.pf-copilot-history-item {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--pf-border);
+}
+.pf-copilot-history-item:last-child { border-bottom: none; }
+.pf-copilot-drift {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+}

@@ -279,6 +279,104 @@ class TestAlternateDestination:
         assert len(alt) >= 1
 
 
+# ---- Phase 4.1: Constraint mapping ----
+
+class TestConstraintMapping:
+    def test_alternate_destination_increases_radius(self):
+        from app.api.copilot_routes import _map_suggestion_to_constraints
+        changes = _map_suggestion_to_constraints(
+            "alternate_destination", {}, 7, 250, 3,
+        )
+        assert changes["radius_miles"] == 375  # 250 * 1.5
+
+    def test_alternate_destination_caps_at_500(self):
+        from app.api.copilot_routes import _map_suggestion_to_constraints
+        changes = _map_suggestion_to_constraints(
+            "alternate_destination", {}, 7, 400, 3,
+        )
+        assert changes["radius_miles"] == 500
+
+    def test_add_buffer_reduces_horizon(self):
+        from app.api.copilot_routes import _map_suggestion_to_constraints
+        changes = _map_suggestion_to_constraints(
+            "add_buffer", {}, 10, 250, 3,
+        )
+        assert changes["planning_horizon_days"] == 9
+
+    def test_add_buffer_min_horizon_7(self):
+        from app.api.copilot_routes import _map_suggestion_to_constraints
+        changes = _map_suggestion_to_constraints(
+            "add_buffer", {}, 7, 250, 3,
+        )
+        assert changes["planning_horizon_days"] == 7
+
+    def test_take_now_sets_max_plans_1(self):
+        from app.api.copilot_routes import _map_suggestion_to_constraints
+        changes = _map_suggestion_to_constraints(
+            "take_now", {}, 7, 250, 3,
+        )
+        assert changes["max_plans"] == 1
+
+    def test_counter_offer_no_changes(self):
+        from app.api.copilot_routes import _map_suggestion_to_constraints
+        changes = _map_suggestion_to_constraints(
+            "counter_offer", {}, 7, 250, 3,
+        )
+        assert changes == {}
+
+
+# ---- Phase 4.2: Drift calculation ----
+
+class TestDriftCalculation:
+    def test_no_drift_when_same(self):
+        from app.copilot.evaluator import compute_drift
+        signals = [{"kind": "lane_rate_shift", "severity": "low", "summary": "x", "details": {}}]
+        drift = compute_drift(signals, signals)
+        assert drift["new_signals"] == []
+        assert drift["resolved_signals"] == []
+        assert drift["severity_changes"] == []
+
+    def test_new_signal_detected(self):
+        from app.copilot.evaluator import compute_drift
+        original = []
+        replayed = [{"kind": "market_temp_downgrade", "severity": "medium", "summary": "x", "details": {}}]
+        drift = compute_drift(original, replayed)
+        assert len(drift["new_signals"]) == 1
+        assert drift["new_signals"][0]["kind"] == "market_temp_downgrade"
+
+    def test_resolved_signal_detected(self):
+        from app.copilot.evaluator import compute_drift
+        original = [{"kind": "load_unavailable", "severity": "high", "summary": "x", "details": {}}]
+        replayed = []
+        drift = compute_drift(original, replayed)
+        assert len(drift["resolved_signals"]) == 1
+        assert drift["resolved_signals"][0]["kind"] == "load_unavailable"
+
+    def test_severity_change_detected(self):
+        from app.copilot.evaluator import compute_drift
+        original = [{"kind": "lane_rate_shift", "severity": "low", "summary": "x", "details": {}}]
+        replayed = [{"kind": "lane_rate_shift", "severity": "high", "summary": "y", "details": {}}]
+        drift = compute_drift(original, replayed)
+        assert len(drift["severity_changes"]) == 1
+        assert drift["severity_changes"][0]["was"] == "low"
+        assert drift["severity_changes"][0]["now"] == "high"
+
+    def test_mixed_drift(self):
+        from app.copilot.evaluator import compute_drift
+        original = [
+            {"kind": "lane_rate_shift", "severity": "low", "summary": "x", "details": {}},
+            {"kind": "load_unavailable", "severity": "high", "summary": "x", "details": {}},
+        ]
+        replayed = [
+            {"kind": "lane_rate_shift", "severity": "medium", "summary": "y", "details": {}},
+            {"kind": "market_temp_downgrade", "severity": "medium", "summary": "z", "details": {}},
+        ]
+        drift = compute_drift(original, replayed)
+        assert len(drift["new_signals"]) == 1  # market_temp_downgrade
+        assert len(drift["resolved_signals"]) == 1  # load_unavailable
+        assert len(drift["severity_changes"]) == 1  # lane_rate_shift low→medium
+
+
 # ---- Integration tests (require DB) ----
 
 class TestCopilotAPIIntegration:

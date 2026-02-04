@@ -1,11 +1,39 @@
 """
 Copilot repository — plan retrieval + load availability checks (Phase 4)
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 
 from app.models.events import PlanGenerationEvent
 from app.models.snapshot import LoadSnapshot
+
+
+def find_plan_event(
+    db: Session,
+    org_id: str,
+    plan_id: str,
+) -> Optional[Tuple[Dict[str, Any], PlanGenerationEvent]]:
+    """
+    Find the plan dict AND its parent PlanGenerationEvent.
+    Returns (plan_dict, event) or None.
+    """
+    events = (
+        db.query(PlanGenerationEvent)
+        .filter(PlanGenerationEvent.org_id == org_id)
+        .order_by(PlanGenerationEvent.timestamp.desc())
+        .limit(200)
+        .all()
+    )
+
+    for event in events:
+        payload = event.full_payload
+        if not payload or "plans" not in payload:
+            continue
+        for plan in payload["plans"]:
+            if plan.get("plan_id") == plan_id:
+                return plan, event
+
+    return None
 
 
 def find_plan_by_id(

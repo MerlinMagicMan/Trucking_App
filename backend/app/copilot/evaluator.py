@@ -199,3 +199,50 @@ def _alternate_rationale(
     if not parts:
         parts.append("lane rate has dropped significantly")
     return "Alternate destinations recommended because " + " and ".join(parts) + "."
+
+
+def compute_drift(
+    original_signals: List[Dict],
+    replayed_signals: List[Dict],
+) -> Dict[str, Any]:
+    """
+    Compare two sets of signals to identify what changed.
+
+    Returns dict with:
+      - new_signals: signals in replayed but not in original (by kind)
+      - resolved_signals: signals in original but not in replayed
+      - severity_changes: signals present in both but with different severity
+      - status_changed: bool
+    """
+    orig_by_kind: Dict[str, Dict] = {}
+    for s in original_signals:
+        orig_by_kind.setdefault(s["kind"], []).append(s)
+
+    replay_by_kind: Dict[str, Dict] = {}
+    for s in replayed_signals:
+        replay_by_kind.setdefault(s["kind"], []).append(s)
+
+    orig_kinds = set(orig_by_kind.keys())
+    replay_kinds = set(replay_by_kind.keys())
+
+    new_signals = [
+        {"kind": k, "count": len(replay_by_kind[k]), "severity": replay_by_kind[k][0]["severity"]}
+        for k in (replay_kinds - orig_kinds)
+    ]
+    resolved_signals = [
+        {"kind": k, "count": len(orig_by_kind[k])}
+        for k in (orig_kinds - replay_kinds)
+    ]
+
+    severity_changes = []
+    for k in (orig_kinds & replay_kinds):
+        o_sev = orig_by_kind[k][0]["severity"]
+        r_sev = replay_by_kind[k][0]["severity"]
+        if o_sev != r_sev:
+            severity_changes.append({"kind": k, "was": o_sev, "now": r_sev})
+
+    return {
+        "new_signals": new_signals,
+        "resolved_signals": resolved_signals,
+        "severity_changes": severity_changes,
+    }

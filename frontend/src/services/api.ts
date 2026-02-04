@@ -3,7 +3,11 @@
  */
 import axios from 'axios';
 import type { TruckSnapshot, OptimizeResponse } from '../types/models';
-import type { GeneratePlansRequest, GeneratePlansResponse } from '../types/plan';
+import type {
+  GeneratePlansRequest, GeneratePlansResponse,
+  PredictionSnapshot, PlanOutcome, OutcomeReport, OutcomeSummaryItem,
+  DecisionCreate, DecisionResponse, CalibrationReport, RiskOutcomeReport,
+} from '../types/plan';
 import type { Org, Truck, RouteRecord, PlanHistoryItem, PlanHistoryDetail } from '../types/org';
 import { getActiveOrgId } from './orgContext';
 
@@ -144,6 +148,137 @@ export interface IngestionStatus {
 export const fetchIngestionStatus = async (): Promise<IngestionStatus> => {
   const response = await api.get<IngestionStatus>('/api/ingestion/status');
   return response.data;
+};
+
+// ---- Plan Outcomes endpoints (Phase 5, Stratum 4A) ----
+
+export const createPredictionSnapshot = async (planId: string): Promise<PredictionSnapshot> => {
+  const response = await api.post<PredictionSnapshot>('/api/outcomes/prediction_snapshot', { plan_id: planId });
+  return response.data;
+};
+
+export const createOutcome = async (body: {
+  plan_id: string;
+  prediction_snapshot_id?: string;
+}): Promise<PlanOutcome> => {
+  const response = await api.post<PlanOutcome>('/api/outcomes', body);
+  return response.data;
+};
+
+export const updateOutcome = async (
+  outcomeId: string,
+  body: Partial<{
+    actual_revenue: string;
+    actual_fuel_spend: string;
+    actual_tolls: string;
+    actual_maintenance: string;
+    actual_other_costs: string;
+    actual_miles_loaded: number;
+    actual_miles_deadhead: number;
+    actual_drive_min: number;
+    actual_wait_min: number;
+    notes: string;
+    status: string;
+  }>,
+): Promise<PlanOutcome> => {
+  const response = await api.patch<PlanOutcome>(`/api/outcomes/${outcomeId}`, body);
+  return response.data;
+};
+
+export const fetchOutcomeReport = async (planId: string): Promise<OutcomeReport | null> => {
+  try {
+    const response = await api.get<OutcomeReport>('/api/outcomes/report', { params: { plan_id: planId } });
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
+export const fetchOutcomeSummary = async (limit = 20): Promise<OutcomeSummaryItem[]> => {
+  try {
+    const response = await api.get<OutcomeSummaryItem[]>('/api/outcomes/summary', { params: { limit } });
+    return response.data;
+  } catch {
+    return [];
+  }
+};
+
+// ---- Decision endpoints (Stratum 4B) ----
+
+export const createDecision = async (body: DecisionCreate): Promise<DecisionResponse> => {
+  const response = await api.post<DecisionResponse>('/api/decisions', body);
+  return response.data;
+};
+
+export const fetchDecisions = async (planId: string): Promise<DecisionResponse[]> => {
+  try {
+    const response = await api.get<DecisionResponse[]>('/api/decisions', { params: { plan_id: planId } });
+    return response.data;
+  } catch {
+    return [];
+  }
+};
+
+// ---- Calibration endpoints (Stratum 5A) ----
+
+export const fetchCalibrationReport = async (windowDays?: number): Promise<CalibrationReport | null> => {
+  try {
+    const params: Record<string, number> = {};
+    if (windowDays !== undefined) params.window_days = windowDays;
+    const response = await api.get<CalibrationReport>('/api/calibration/report', { params });
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
+// ---- Trust endpoints (Stratum 5C) ----
+
+export interface PlanTrustReport {
+  confidence_score: number;
+  confidence_label: 'high' | 'medium' | 'low' | 'unknown';
+  warnings: Array<{
+    kind: string;
+    severity: 'low' | 'medium' | 'high';
+    title: string;
+    message: string;
+    suggested_action?: string | null;
+    details: Record<string, any>;
+  }>;
+  explanations: string[];
+  meta: {
+    org_id: string;
+    plan_id: string;
+    computed_at: string;
+    window_days: number;
+    offline: boolean;
+    sample_size: number;
+    profile_confidence: string;
+    volatility_pct: Record<string, string>;
+    used_calibrated: boolean;
+  };
+}
+
+export const fetchTrustReport = async (planId: string, windowDays?: number): Promise<PlanTrustReport | null> => {
+  try {
+    const params: Record<string, any> = { plan_id: planId };
+    if (windowDays !== undefined) params.window_days = windowDays;
+    const response = await api.get<PlanTrustReport>('/api/trust/report', { params });
+    return response.data;
+  } catch {
+    return null;
+  }
+};
+
+// ---- Risk Outcome endpoints (Stratum 5D) ----
+
+export const fetchRiskOutcomeReport = async (planId: string): Promise<RiskOutcomeReport | null> => {
+  try {
+    const response = await api.get<RiskOutcomeReport>('/api/outcomes/risk_report', { params: { plan_id: planId } });
+    return response.data;
+  } catch {
+    return null;
+  }
 };
 
 export default api;

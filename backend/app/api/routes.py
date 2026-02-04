@@ -21,6 +21,9 @@ from app.connectors.truckstop import TruckstopConnector
 from app.connectors.dat import DatConnector
 from app.ingestion.snapshot_store import get_active_loads
 from app.models.snapshot import LoadSnapshot
+from decimal import Decimal
+from app.calibration.profile import build_calibration_profile
+from app.calibration.apply import apply_calibration_to_prediction, build_plan_estimates, USE_CALIBRATED_SCORING
 
 router = APIRouter()
 
@@ -209,6 +212,59 @@ async def generate_plans(
             radius_miles=radius_miles,
             preloaded=plan_preloaded,
         )
+
+        # Attach calibration data to each plan
+        try:
+            cal_profile = build_calibration_profile(db, org_id)
+        except Exception:
+            cal_profile = None
+
+        for plan in plans:
+            # Compute total miles and duration from time_blocks
+            total_miles = Decimal(str(sum(l.deadhead_miles + (l.load.miles or 0) for l in plan.loads)))
+            total_duration = Decimal(str(sum(b.duration_min for b in plan.time_blocks)))
+
+            raw_pred = {
+                "revenue": Decimal(str(plan.total_revenue_usd)),
+                "costs": Decimal(str(plan.total_costs_usd)),
+                "net_profit": Decimal(str(plan.net_profit_usd)),
+                "miles": total_miles,
+                "duration": total_duration,
+                "profit_per_day": Decimal(str(plan.profit_per_day_usd)),
+                "planning_horizon_days": Decimal(str(plan.planning_horizon_days)),
+            }
+
+            plan.estimates_raw = build_plan_estimates(
+                raw_pred["revenue"], raw_pred["costs"], raw_pred["net_profit"],
+                raw_pred["profit_per_day"], raw_pred["miles"], raw_pred["duration"],
+            ).model_dump()
+
+            if cal_profile:
+                calibrated, meta = apply_calibration_to_prediction(raw_pred, cal_profile)
+                plan.calibration_meta = meta.model_dump()
+                if meta.applied:
+                    plan.estimates_calibrated = build_plan_estimates(
+                        calibrated["revenue"], calibrated["costs"], calibrated["net_profit"],
+                        calibrated.get("profit_per_day", raw_pred["profit_per_day"]),
+                        calibrated["miles"], calibrated["duration"],
+                    ).model_dump()
+
+                    # If scoring uses calibrated values, re-sort will happen below
+                    if USE_CALIBRATED_SCORING:
+                        plan.profit_per_day_usd = float(calibrated.get("profit_per_day", raw_pred["profit_per_day"]))
+                        plan.net_profit_usd = float(calibrated["net_profit"])
+                else:
+                    plan.estimates_calibrated = None
+            else:
+                plan.calibration_meta = {
+                    "applied": False,
+                    "explanation": ["No calibration profile available for this org"],
+                }
+                plan.estimates_calibrated = None
+
+        # Re-sort if calibrated scoring changed profit_per_day
+        if cal_profile and USE_CALIBRATED_SCORING and len(plans) > 1:
+            plans.sort(key=lambda p: (-p.profit_per_day_usd, str(p.plan_id)))
 
         # Build warnings
         warnings = []

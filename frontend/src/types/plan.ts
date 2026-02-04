@@ -158,6 +158,11 @@ export interface Plan {
   // Metadata
   loads_analyzed: number;
   plans_generated: number;
+
+  // Calibration (Stratum 5B)
+  estimates_raw?: PlanEstimates;
+  estimates_calibrated?: PlanEstimates | null;
+  calibration_meta?: CalibrationAppliedMeta;
 }
 
 export interface GeneratePlansRequest {
@@ -181,6 +186,151 @@ export interface PreflightPreferences {
   hos?: HOSSnapshot;
 }
 
+// Phase 5: Plan Outcomes (Stratum 4A) — money as string (Decimal)
+
+export interface PredictionSnapshot {
+  id: string;
+  org_id: string;
+  plan_id: string;
+  plan_generation_event_id?: number | null;
+  created_at: string;
+  predicted_revenue?: string | null;
+  predicted_costs?: string | null;
+  predicted_net_profit?: string | null;
+  predicted_profit_per_day?: string | null;
+  predicted_miles_total?: number | null;
+  predicted_miles_deadhead?: number | null;
+  predicted_duration_min?: number | null;
+  predicted_num_loads?: number | null;
+  predicted: Record<string, any>;
+}
+
+export interface PlanOutcome {
+  id: string;
+  org_id: string;
+  plan_id: string;
+  prediction_snapshot_id?: string | null;
+  status: 'pending' | 'partial' | 'complete';
+  source: string;
+  actual_revenue?: string | null;
+  actual_fuel_spend?: string | null;
+  actual_tolls?: string | null;
+  actual_maintenance?: string | null;
+  actual_other_costs?: string | null;
+  actual_miles_loaded?: number | null;
+  actual_miles_deadhead?: number | null;
+  actual_drive_min?: number | null;
+  actual_wait_min?: number | null;
+  actual: Record<string, any>;
+  notes?: string | null;
+  recorded_at: string;
+  completed_at?: string | null;
+}
+
+export interface VarianceDelta {
+  field: string;
+  predicted?: string | null;
+  actual?: string | null;
+  delta?: string | null;
+  variance_pct?: string | null;
+}
+
+export interface OutcomeFlag {
+  flag: string;
+  severity: 'low' | 'medium' | 'high';
+  summary: string;
+}
+
+export interface OutcomeReport {
+  plan_id: string;
+  prediction_snapshot_id?: string | null;
+  outcome_id?: string | null;
+  predicted_summary: Record<string, any>;
+  actual_summary: Record<string, any>;
+  deltas: VarianceDelta[];
+  flags: OutcomeFlag[];
+  explanations: string[];
+}
+
+export interface OutcomeSummaryItem {
+  plan_id: string;
+  outcome_id?: string | null;
+  status: string;
+  predicted_net_profit?: string | null;
+  actual_net_profit?: string | null;
+  profit_variance_pct?: string | null;
+  predicted_duration_min?: number | null;
+  actual_duration_min?: number | null;
+  time_variance_pct?: string | null;
+  recorded_at?: string | null;
+  completed_at?: string | null;
+}
+
+// Stratum 4B: Decision Feedback Loop
+
+export interface DecisionCreate {
+  plan_id: string;
+  decision_type: 'accepted' | 'rejected' | 'modified';
+  reason?: string;
+}
+
+export interface DecisionResponse {
+  id: number;
+  org_id: string;
+  plan_id: string;
+  decision_type: string;
+  reason?: string | null;
+  outcome_id?: string | null;
+  prediction_snapshot_id?: string | null;
+  decision_context_snapshot_id?: string | null; // Stratum 5D: Learning Loop
+  timestamp: string;
+}
+
+// Stratum 5B: Calibration Feedback Loop
+
+export interface PlanEstimates {
+  revenue: string;
+  costs: string;
+  net_profit: string;
+  miles: string;
+  duration_min: string;
+  profit_per_day: string;
+}
+
+export interface CalibrationAppliedMeta {
+  applied: boolean;
+  window_days?: number;
+  sample_size?: number;
+  confidence?: string;
+  bias_pct_by_metric?: Record<string, string>;
+  caps_applied?: string[] | null;
+  explanation: string[];
+}
+
+// Stratum 5A: Prediction Calibration
+
+export interface CalibrationMetric {
+  name: string;
+  predicted_avg: string;
+  actual_avg: string;
+  mean_error: string;
+  mae: string;
+  mean_variance_pct: string;
+  direction: 'over' | 'under' | 'accurate';
+  sample_size: number;
+  worst_case_pct: string;
+}
+
+export interface CalibrationReport {
+  org_id: string;
+  window_days: number;
+  computed_at: string;
+  sample_size: number;
+  accuracy_score: string;
+  metrics: CalibrationMetric[];
+  insights: string[];
+}
+
 export interface GeneratePlansResponse {
   snapshot_id: string;
   plans: Plan[];
@@ -191,4 +341,60 @@ export interface GeneratePlansResponse {
     plans_requested: number;
     plans_generated: number;
   };
+}
+
+// Stratum 5D: Learning Loop — Risk Outcome Report
+
+export interface WarningOutcomeCorrelation {
+  warning_kind: string;
+  warning_severity: string;
+  warning_title: string;
+  warning_message: string;
+  outcome_verified: boolean;
+  outcome_variance_field?: string | null;
+  outcome_variance_pct?: string | null;
+  assessment: 'correct' | 'false_alarm' | 'partially_correct' | 'unverifiable';
+  assessment_explanation: string;
+}
+
+export interface DecisionContextSummary {
+  captured_at: string;
+  trust_score?: number | null;
+  trust_label?: string | null;
+  trust_warning_count: number;
+  copilot_status?: string | null;
+  copilot_signal_count: number;
+  copilot_high_severity_count: number;
+  calibration_sample_size?: number | null;
+  calibration_applied?: string | null;
+  plan_revenue?: string | null;
+  plan_costs?: string | null;
+  plan_net_profit?: string | null;
+}
+
+export interface OutcomeActualSummary {
+  status: string;
+  completed_at?: string | null;
+  actual_revenue?: string | null;
+  actual_costs?: string | null;
+  actual_net_profit?: string | null;
+  revenue_variance_pct?: string | null;
+  costs_variance_pct?: string | null;
+  profit_variance_pct?: string | null;
+  major_variance_fields: string[];
+}
+
+export interface RiskOutcomeReport {
+  org_id: string;
+  plan_id: string;
+  computed_at: string;
+  decision_context?: DecisionContextSummary | null;
+  pre_decision_warnings: Record<string, any>[];
+  outcome_summary?: OutcomeActualSummary | null;
+  warning_correlations: WarningOutcomeCorrelation[];
+  accuracy_assessment: 'accurate' | 'partially_accurate' | 'inaccurate' | 'insufficient_data';
+  accuracy_score: number;
+  explanations: string[];
+  has_decision_context: boolean;
+  has_completed_outcome: boolean;
 }

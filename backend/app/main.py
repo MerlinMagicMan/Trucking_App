@@ -19,6 +19,10 @@ from app.api.org_routes import org_router
 from app.api.ingestion_routes import ingestion_router
 from app.api.intel_routes import intel_router
 from app.api.copilot_routes import copilot_router
+from app.api.outcome_routes import outcome_router
+from app.api.decision_routes import decision_router
+from app.api.calibration_routes import calibration_router
+from app.api.trust_routes import trust_router
 
 # Database initialization
 from app.db.connection import engine, Base, SessionLocal
@@ -28,6 +32,9 @@ import app.models.events  # noqa: F401
 import app.models.tenant  # noqa: F401
 import app.models.snapshot  # noqa: F401
 import app.models.analytics  # noqa: F401
+import app.models.copilot_evaluation  # noqa: F401
+import app.models.plan_outcome  # noqa: F401
+import app.models.decision_context  # noqa: F401  Stratum 5D: Learning Loop
 from app.models.tenant import Organization, Truck
 from app.ingestion.scheduler import start_scheduler, stop_scheduler
 
@@ -100,6 +107,10 @@ app.include_router(org_router, prefix="/api")
 app.include_router(ingestion_router, prefix="/api")
 app.include_router(intel_router, prefix="/api")
 app.include_router(copilot_router, prefix="/api")
+app.include_router(outcome_router, prefix="/api")
+app.include_router(decision_router, prefix="/api")
+app.include_router(calibration_router, prefix="/api")
+app.include_router(trust_router, prefix="/api")
 
 
 @app.get("/")

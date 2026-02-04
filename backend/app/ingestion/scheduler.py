@@ -14,8 +14,11 @@ from app.connectors.mock_market import MockMarketConnector
 from app.ingestion.snapshot_store import upsert_snapshot, expire_stale
 from app.models.tenant import Organization
 from app.analytics.runner import run_analytics_cycle
+from app.outcomes.mock_actuals_generator import run_outcome_ingestion
 
 logger = logging.getLogger(__name__)
+
+_last_outcome_run: Optional[dict] = None
 
 _scheduler: Optional[BackgroundScheduler] = None
 
@@ -81,6 +84,48 @@ def _run_ingestion() -> None:
         db.close()
 
 
+def _run_outcome_ingestion() -> None:
+    """
+    Single outcome ingestion cycle:
+    For each org, generate mock actuals for pending/partial outcomes.
+    """
+    global _last_outcome_run
+    db = SessionLocal()
+    try:
+        orgs = db.query(Organization).all()
+        if not orgs:
+            return
+
+        total_stats = {"processed": 0, "partial_count": 0, "complete_count": 0, "skipped": 0, "errors": 0}
+
+        for org in orgs:
+            org_id = str(org.id)
+            try:
+                stats = run_outcome_ingestion(db, org_id)
+                db.commit()
+                for k in ["processed", "partial_count", "complete_count", "skipped"]:
+                    total_stats[k] += stats.get(k, 0)
+                if stats["processed"] > 0:
+                    logger.info(
+                        f"Outcome ingestion [{org.name}]: {stats['processed']} processed, "
+                        f"{stats['partial_count']} partial, {stats['complete_count']} complete, "
+                        f"{stats['skipped']} skipped"
+                    )
+            except Exception as e:
+                db.rollback()
+                total_stats["errors"] += 1
+                logger.error(f"Outcome ingestion failed for org {org.name}: {e}")
+
+        _last_outcome_run = {
+            "timestamp": datetime.utcnow().isoformat(),
+            **total_stats,
+        }
+    except Exception as e:
+        logger.error(f"Outcome ingestion cycle failed: {e}")
+    finally:
+        db.close()
+
+
 def start_scheduler() -> None:
     """Start the background ingestion scheduler."""
     global _scheduler
@@ -102,8 +147,18 @@ def start_scheduler() -> None:
         id="analytics_hourly",
         next_run_time=datetime.utcnow(),  # run immediately on start
     )
+    _scheduler.add_job(
+        _run_outcome_ingestion,
+        "interval",
+        minutes=INGESTION_INTERVAL_MINUTES,
+        id="outcome_ingestion",
+        next_run_time=datetime.utcnow(),  # run immediately on start
+    )
     _scheduler.start()
-    logger.info(f"Ingestion scheduler started (every {INGESTION_INTERVAL_MINUTES} min, analytics hourly)")
+    logger.info(
+        f"Ingestion scheduler started (loads every {INGESTION_INTERVAL_MINUTES} min, "
+        f"analytics hourly, outcomes every {INGESTION_INTERVAL_MINUTES} min)"
+    )
 
 
 def stop_scheduler() -> None:
@@ -128,8 +183,11 @@ def get_scheduler_status() -> dict:
             "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
         })
 
-    return {
+    result = {
         "running": _scheduler.running if _scheduler else False,
         "interval_minutes": INGESTION_INTERVAL_MINUTES,
         "jobs": job_info,
     }
+    if _last_outcome_run:
+        result["outcome_ingestion"] = _last_outcome_run
+    return result

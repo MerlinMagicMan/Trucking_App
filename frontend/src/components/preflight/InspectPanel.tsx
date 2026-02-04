@@ -13,8 +13,11 @@ import {
   fetchDestinationIntel,
   fetchNegotiationIntel,
 } from '../../services/intel';
-import type { CopilotResponse } from '../../types/copilot';
-import { fetchPlanStatus } from '../../services/copilot';
+import type { CopilotResponse, BranchPlanResponse, EvaluationHistoryItem, EvaluationReplayResponse, PlanTrustReport } from '../../types/copilot';
+import type { OutcomeReport, RiskOutcomeReport } from '../../types/plan';
+import { fetchPlanStatus, branchPlans, fetchEvaluationHistory, replayEvaluation } from '../../services/copilot';
+import { fetchOutcomeReport, createDecision, fetchDecisions, fetchTrustReport, fetchRiskOutcomeReport } from '../../services/api';
+import type { DecisionResponse } from '../../types/plan';
 
 interface InspectPanelProps {
   plan: Plan | null;
@@ -23,7 +26,7 @@ interface InspectPanelProps {
   onClose: () => void;
 }
 
-type TabId = 'timeline' | 'economics' | 'risk' | 'why' | 'intel' | 'copilot';
+type TabId = 'timeline' | 'economics' | 'risk' | 'why' | 'intel' | 'copilot' | 'outcomes';
 
 const formatTime = (iso: string): string => {
   const d = new Date(iso);
@@ -491,6 +494,117 @@ const IntelTab: React.FC<{ plan: Plan }> = ({ plan }) => {
   );
 };
 
+// ---- Trust Section (reusable) ----
+
+const trustLabelColor = (label: string): { bg: string; text: string } => {
+  if (label === 'high') return { bg: '#dcfce7', text: '#166534' };
+  if (label === 'medium') return { bg: '#fef3c7', text: '#92400e' };
+  if (label === 'low') return { bg: '#fee2e2', text: '#991b1b' };
+  return { bg: '#f1f5f9', text: '#64748b' };
+};
+
+const TrustSection: React.FC<{ trust: PlanTrustReport | null | undefined; compact?: boolean }> = ({ trust, compact }) => {
+  const [showExplanations, setShowExplanations] = useState(false);
+
+  if (trust === undefined) {
+    return <p style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>Loading trust...</p>;
+  }
+
+  if (trust === null) {
+    return <p style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>Trust unavailable</p>;
+  }
+
+  const { confidence_score, confidence_label, warnings, explanations, meta } = trust;
+  const labelStyle = trustLabelColor(confidence_label);
+
+  // Show "Trust building" message for unknown with low sample
+  if (confidence_label === 'unknown' && meta.sample_size < 10) {
+    return (
+      <div style={{ padding: compact ? '0' : '8px 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+          <span style={{
+            fontSize: '12px', fontWeight: 600, padding: '2px 8px', borderRadius: '4px',
+            background: labelStyle.bg, color: labelStyle.text,
+          }}>
+            BUILDING
+          </span>
+          <span style={{ fontSize: '12px', color: '#64748b' }}>
+            {meta.sample_size}/10 outcomes
+          </span>
+        </div>
+        <p style={{ fontSize: '12px', color: '#64748b', margin: '4px 0' }}>
+          Trust building: need more completed outcomes for calibration.
+        </p>
+      </div>
+    );
+  }
+
+  const topWarnings = warnings.slice(0, 3);
+
+  return (
+    <div style={{ padding: compact ? '0' : '8px 0' }}>
+      {/* Score badge */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+        <span style={{
+          fontSize: '13px', fontWeight: 700, padding: '3px 10px', borderRadius: '4px',
+          background: labelStyle.bg, color: labelStyle.text,
+        }}>
+          {confidence_score}/100 {confidence_label.toUpperCase()}
+        </span>
+        <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+          {meta.sample_size} outcomes · {meta.window_days}d
+        </span>
+      </div>
+
+      {/* Top warnings */}
+      {topWarnings.length > 0 && (
+        <div style={{ marginBottom: '8px' }}>
+          {topWarnings.map((w, i) => (
+            <div key={i} style={{
+              display: 'flex', alignItems: 'center', gap: '6px',
+              padding: '4px 0', fontSize: '12px',
+            }}>
+              <span style={{
+                fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px',
+                background: w.severity === 'high' ? '#fee2e2' : w.severity === 'medium' ? '#fef3c7' : '#e0e7ff',
+                color: w.severity === 'high' ? '#991b1b' : w.severity === 'medium' ? '#92400e' : '#3730a3',
+                textTransform: 'uppercase',
+              }}>
+                {w.severity}
+              </span>
+              <span style={{ fontWeight: 500, color: '#0f172a' }}>{w.title}</span>
+              {!compact && <span style={{ color: '#64748b' }}>— {w.message}</span>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Why expander */}
+      {!compact && explanations.length > 0 && (
+        <div>
+          <button
+            onClick={() => setShowExplanations(!showExplanations)}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: '11px', color: '#64748b', padding: 0, textDecoration: 'underline',
+            }}
+            type="button"
+          >
+            {showExplanations ? 'Hide details' : 'Why this score?'}
+          </button>
+          {showExplanations && (
+            <div style={{ marginTop: '6px', fontSize: '12px', color: '#475569' }}>
+              {explanations.map((e, i) => (
+                <div key={i} style={{ marginBottom: '2px' }}>· {e}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ---- Copilot Tab ----
 
 const severityColor = (s: string): string => {
@@ -511,6 +625,9 @@ const CopilotTab: React.FC<{ plan: Plan }> = ({ plan }) => {
   });
   const [expandedSignal, setExpandedSignal] = useState<number | null>(null);
   const [expandedSuggestion, setExpandedSuggestion] = useState<number | null>(null);
+  const [branchState, setBranchState] = useState<Record<number, { status: 'idle' | 'loading' | 'loaded' | 'error'; data: BranchPlanResponse | null }>>({});
+  const [history, setHistory] = useState<EvaluationHistoryItem[]>([]);
+  const [replayData, setReplayData] = useState<{ evalId: number; status: 'loading' | 'loaded' | 'error'; data: EvaluationReplayResponse | null } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -523,6 +640,11 @@ const CopilotTab: React.FC<{ plan: Plan }> = ({ plan }) => {
 
     return () => { cancelled = true; };
   }, [plan.plan_id]);
+
+  // Fetch evaluation history
+  useEffect(() => {
+    fetchEvaluationHistory(plan.plan_id).then(setHistory);
+  }, [plan.plan_id, state.status]); // refetch after new evaluation is persisted
 
   if (state.status === 'loading' || state.status === 'idle') {
     return (
@@ -545,6 +667,14 @@ const CopilotTab: React.FC<{ plan: Plan }> = ({ plan }) => {
 
   return (
     <div>
+      {/* Trust Section */}
+      {data.meta.trust && (
+        <div className="pf-intel-section">
+          <h3 style={{ marginBottom: '8px' }}>Trust Score</h3>
+          <TrustSection trust={data.meta.trust} />
+        </div>
+      )}
+
       {/* Status */}
       <div className="pf-intel-section">
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '8px' }}>
@@ -603,39 +733,531 @@ const CopilotTab: React.FC<{ plan: Plan }> = ({ plan }) => {
 
       {/* Suggestions */}
       {data.suggestions.length > 0 && (
-        <div className="pf-intel-section" style={{ borderBottom: 'none' }}>
+        <div className="pf-intel-section">
           <h3>Suggestions ({data.suggestions.length})</h3>
-          {data.suggestions.map((sug, i) => (
-            <div
-              key={i}
-              className="pf-copilot-suggestion"
-              style={{ cursor: 'pointer' }}
-              onClick={() => setExpandedSuggestion(expandedSuggestion === i ? null : i)}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                <span
-                  className="pf-intel-badge"
-                  style={{ backgroundColor: '#e0e7ff', color: '#4338ca' }}
-                >
-                  {sug.kind.replace(/_/g, ' ')}
-                </span>
-                <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>{sug.summary}</span>
-              </div>
-              <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{sug.rationale}</p>
-              {expandedSuggestion === i && Object.keys(sug.data).length > 0 && (
-                <div className="pf-copilot-details">
-                  {Object.entries(sug.data).filter(([, v]) => v != null).map(([k, v]) => (
-                    <div key={k} className="pf-intel-row">
-                      <span className="pf-intel-label">{k.replace(/_/g, ' ')}</span>
-                      <span className="pf-intel-value">
-                        {typeof v === 'number' ? (k.includes('usd') || k.includes('rate') ? `$${v.toFixed(2)}` : v.toFixed(2)) : String(v)}
-                      </span>
-                    </div>
-                  ))}
+          {data.suggestions.map((sug, i) => {
+            const bs = branchState[i] || { status: 'idle', data: null };
+            const handleBranch = (e: React.MouseEvent) => {
+              e.stopPropagation();
+              if (bs.status === 'loading') return;
+              setBranchState((prev) => ({ ...prev, [i]: { status: 'loading', data: null } }));
+              branchPlans({
+                plan_id: plan.plan_id,
+                suggestion_kind: sug.kind,
+                suggestion_data: sug.data,
+              }).then((result) => {
+                setBranchState((prev) => ({
+                  ...prev,
+                  [i]: result ? { status: 'loaded', data: result } : { status: 'error', data: null },
+                }));
+              });
+            };
+
+            return (
+              <div
+                key={i}
+                className="pf-copilot-suggestion"
+                style={{ cursor: 'pointer' }}
+                onClick={() => setExpandedSuggestion(expandedSuggestion === i ? null : i)}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                  <span
+                    className="pf-intel-badge"
+                    style={{ backgroundColor: '#e0e7ff', color: '#4338ca' }}
+                  >
+                    {sug.kind.replace(/_/g, ' ')}
+                  </span>
+                  <span style={{ fontSize: '13px', fontWeight: 500, color: '#0f172a' }}>{sug.summary}</span>
                 </div>
-              )}
+                <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#64748b' }}>{sug.rationale}</p>
+                {expandedSuggestion === i && Object.keys(sug.data).length > 0 && (
+                  <div className="pf-copilot-details">
+                    {Object.entries(sug.data).filter(([, v]) => v != null).map(([k, v]) => (
+                      <div key={k} className="pf-intel-row">
+                        <span className="pf-intel-label">{k.replace(/_/g, ' ')}</span>
+                        <span className="pf-intel-value">
+                          {typeof v === 'number' ? (k.includes('usd') || k.includes('rate') ? `$${v.toFixed(2)}` : v.toFixed(2)) : String(v)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Branch plan button */}
+                <div style={{ marginTop: '8px' }}>
+                  {bs.status === 'idle' && (
+                    <button className="pf-copilot-branch-btn" onClick={handleBranch}>
+                      Generate Branch Plans
+                    </button>
+                  )}
+                  {bs.status === 'loading' && (
+                    <span style={{ fontSize: '12px', color: '#94a3b8' }}>Generating...</span>
+                  )}
+                  {bs.status === 'error' && (
+                    <span style={{ fontSize: '12px', color: '#ef4444' }}>Branch generation failed</span>
+                  )}
+                  {bs.status === 'loaded' && bs.data && (
+                    <div className="pf-copilot-branch-results">
+                      {bs.data.plans.length === 0 ? (
+                        <p style={{ fontSize: '12px', color: '#94a3b8', margin: '4px 0' }}>
+                          No feasible branch plans found.
+                        </p>
+                      ) : (
+                        bs.data.plans.map((bp) => (
+                          <div key={bp.plan_id} className="pf-copilot-branch-result">
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 600, fontSize: '13px' }}>
+                                ${bp.profit_per_day_usd.toFixed(0)}/day
+                              </span>
+                              <span style={{ fontSize: '11px', color: '#64748b' }}>
+                                {bp.num_loads} loads &middot; {bp.confidence}
+                              </span>
+                            </div>
+                            <div style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
+                              Net ${bp.net_profit_usd.toFixed(0)} &middot; Ends {bp.end_location}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {Object.keys(bs.data.constraint_changes).length > 0 && (
+                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: '4px 0 0' }}>
+                          Changed: {Object.entries(bs.data.constraint_changes).map(([k, v]) => `${k.replace(/_/g, ' ')}=${v}`).join(', ')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Evaluation History */}
+      <div className="pf-intel-section" style={{ borderBottom: 'none' }}>
+        <h3>Evaluation History</h3>
+        {history.length === 0 ? (
+          <p style={{ fontSize: '12px', color: '#94a3b8', fontStyle: 'italic' }}>No evaluation history yet.</p>
+        ) : (
+          <>
+            {history.slice(0, 10).map((item) => {
+              const p = statusPill(item.status);
+              const isReplaying = replayData?.evalId === item.id;
+              const ts = new Date(item.timestamp).toLocaleString('en-US', {
+                month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+              });
+
+              return (
+                <div key={item.id} className="pf-copilot-history-item">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span className="pf-intel-badge" style={{ backgroundColor: p.bg, color: p.text, fontSize: '10px' }}>
+                      {p.label}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#475569' }}>{ts}</span>
+                    <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                      {item.signal_count}s / {item.suggestion_count}r
+                    </span>
+                    <button
+                      className="pf-copilot-branch-btn"
+                      style={{ marginLeft: 'auto', fontSize: '11px', padding: '2px 6px' }}
+                      onClick={() => {
+                        if (isReplaying) return;
+                        setReplayData({ evalId: item.id, status: 'loading', data: null });
+                        replayEvaluation(item.id).then((res) => {
+                          setReplayData(res
+                            ? { evalId: item.id, status: 'loaded', data: res }
+                            : { evalId: item.id, status: 'error', data: null }
+                          );
+                        });
+                      }}
+                    >
+                      {isReplaying && replayData?.status === 'loading' ? '...' : 'Replay'}
+                    </button>
+                  </div>
+
+                  {/* Drift view */}
+                  {isReplaying && replayData?.status === 'loaded' && replayData.data && (
+                    <div className="pf-copilot-drift">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                        <span className="pf-intel-badge" style={{
+                          backgroundColor: statusPill(replayData.data.original.status).bg,
+                          color: statusPill(replayData.data.original.status).text,
+                          fontSize: '10px',
+                        }}>
+                          Then: {replayData.data.original.status}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#475569' }}>&rarr;</span>
+                        <span className="pf-intel-badge" style={{
+                          backgroundColor: statusPill(replayData.data.replayed.status).bg,
+                          color: statusPill(replayData.data.replayed.status).text,
+                          fontSize: '10px',
+                        }}>
+                          Now: {replayData.data.replayed.status}
+                        </span>
+                      </div>
+                      {replayData.data.drift.new_signals.length > 0 && (
+                        <p style={{ fontSize: '11px', color: '#dc2626', margin: '2px 0' }}>
+                          New: {replayData.data.drift.new_signals.map((s) => s.kind.replace(/_/g, ' ')).join(', ')}
+                        </p>
+                      )}
+                      {replayData.data.drift.resolved_signals.length > 0 && (
+                        <p style={{ fontSize: '11px', color: '#16a34a', margin: '2px 0' }}>
+                          Resolved: {replayData.data.drift.resolved_signals.map((s) => s.kind.replace(/_/g, ' ')).join(', ')}
+                        </p>
+                      )}
+                      {replayData.data.drift.severity_changes.length > 0 && (
+                        <p style={{ fontSize: '11px', color: '#d97706', margin: '2px 0' }}>
+                          Changed: {replayData.data.drift.severity_changes.map((s) => `${s.kind.replace(/_/g, ' ')} ${s.was}→${s.now}`).join(', ')}
+                        </p>
+                      )}
+                      {replayData.data.drift.new_signals.length === 0
+                        && replayData.data.drift.resolved_signals.length === 0
+                        && replayData.data.drift.severity_changes.length === 0 && (
+                        <p style={{ fontSize: '11px', color: '#94a3b8', margin: '2px 0' }}>No drift detected.</p>
+                      )}
+                    </div>
+                  )}
+                  {isReplaying && replayData?.status === 'error' && (
+                    <p style={{ fontSize: '11px', color: '#ef4444', margin: '4px 0' }}>Replay failed.</p>
+                  )}
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ---- Outcomes Tab ----
+
+const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const [report, setReport] = useState<OutcomeReport | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [deciding, setDeciding] = useState(false);
+  const [decision, setDecision] = useState<DecisionResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [trust, setTrust] = useState<PlanTrustReport | null | undefined>(undefined);
+  const [riskReport, setRiskReport] = useState<RiskOutcomeReport | null>(null);
+
+  useEffect(() => {
+    setLoading(true);
+    setError(null);
+    setDecision(null);
+    setTrust(undefined);
+    setRiskReport(null);
+    Promise.all([
+      fetchOutcomeReport(plan.plan_id).catch(() => null),
+      fetchDecisions(plan.plan_id),
+      fetchTrustReport(plan.plan_id).catch(() => null),
+      fetchRiskOutcomeReport(plan.plan_id).catch(() => null),
+    ]).then(([rpt, decisions, trustRpt, risk]) => {
+      setReport(rpt);
+      setTrust(trustRpt);
+      setRiskReport(risk);
+      if (decisions.length > 0) {
+        setDecision(decisions[0]);
+      }
+    }).finally(() => setLoading(false));
+  }, [plan.plan_id]);
+
+  const handleAccept = async () => {
+    setDeciding(true);
+    setError(null);
+    try {
+      const d = await createDecision({ plan_id: plan.plan_id, decision_type: 'accepted' });
+      setDecision(d);
+      const r = await fetchOutcomeReport(plan.plan_id);
+      setReport(r);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Failed to accept plan');
+    } finally {
+      setDeciding(false);
+    }
+  };
+
+  const handleReject = async () => {
+    const reason = window.prompt('Reason for rejection (optional):');
+    if (reason === null) return; // User cancelled prompt
+    setDeciding(true);
+    setError(null);
+    try {
+      const d = await createDecision({
+        plan_id: plan.plan_id,
+        decision_type: 'rejected',
+        reason: reason || undefined,
+      });
+      setDecision(d);
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Failed to reject plan');
+    } finally {
+      setDeciding(false);
+    }
+  };
+
+  if (loading) return <div style={{ color: '#94a3b8', padding: '16px' }}>Loading outcomes...</div>;
+
+  // Show decision buttons if no decision or no outcome yet
+  const hasOutcome = !!report;
+  const lastDecisionType = decision?.decision_type;
+
+  if (!hasOutcome && lastDecisionType !== 'accepted') {
+    return (
+      <div style={{ padding: '16px' }}>
+        {lastDecisionType === 'rejected' && (
+          <div style={{
+            display: 'inline-block', padding: '3px 10px', borderRadius: '4px',
+            background: '#fef2f2', color: '#991b1b', fontSize: '13px', fontWeight: 600,
+            marginBottom: '12px',
+          }}>
+            Rejected{decision?.reason ? `: ${decision.reason}` : ''}
+          </div>
+        )}
+        {!lastDecisionType && (
+          <p style={{ color: '#64748b', marginBottom: '12px' }}>
+            Accept this plan to start tracking actuals vs predictions.
+          </p>
+        )}
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            className="btn btn-sm"
+            onClick={handleAccept}
+            disabled={deciding}
+            type="button"
+            style={{ background: '#16a34a', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            {deciding ? 'Accepting...' : 'Accept Plan'}
+          </button>
+          <button
+            className="btn btn-sm"
+            onClick={handleReject}
+            disabled={deciding}
+            type="button"
+            style={{ background: '#dc2626', color: '#fff', border: 'none', padding: '6px 16px', borderRadius: '4px', cursor: 'pointer' }}
+          >
+            Reject
+          </button>
+        </div>
+        {error && <p style={{ color: '#dc2626', fontSize: '13px', marginTop: '8px' }}>{error}</p>}
+      </div>
+    );
+  }
+
+  // Show accepted badge if accepted
+  if (!report && lastDecisionType === 'accepted') {
+    return (
+      <div style={{ padding: '16px' }}>
+        <div style={{
+          display: 'inline-block', padding: '3px 10px', borderRadius: '4px',
+          background: '#f0fdf4', color: '#166534', fontSize: '13px', fontWeight: 600,
+          marginBottom: '8px',
+        }}>
+          Accepted — Tracking
+        </div>
+        <p style={{ color: '#64748b', fontSize: '13px' }}>
+          Prediction snapshot created. Outcome report will appear once data is available.
+        </p>
+      </div>
+    );
+  }
+
+  if (!report) return null;
+
+  return (
+    <div>
+      {lastDecisionType === 'accepted' && (
+        <div style={{
+          display: 'inline-block', padding: '3px 10px', borderRadius: '4px',
+          background: '#f0fdf4', color: '#166534', fontSize: '13px', fontWeight: 600,
+          marginBottom: '8px',
+        }}>
+          Accepted — Tracking
+        </div>
+      )}
+
+      {/* Trust section in outcomes */}
+      {trust !== undefined && (
+        <div style={{ marginBottom: '16px', padding: '12px', background: '#f8fafc', borderRadius: '6px' }}>
+          <h4 style={{ fontSize: '13px', fontWeight: 600, margin: '0 0 8px', color: '#475569' }}>Prediction Trust</h4>
+          <TrustSection trust={trust} compact />
+        </div>
+      )}
+      <h3 style={{ margin: '0 0 12px', fontSize: '16px', fontWeight: 600 }}>Predicted vs Actual</h3>
+
+      {/* Deltas table */}
+      {report.deltas.length > 0 && (
+        <table className="data-table" style={{ marginBottom: '16px' }}>
+          <thead>
+            <tr>
+              <th>Metric</th>
+              <th>Predicted</th>
+              <th>Actual</th>
+              <th>Delta</th>
+              <th>Variance</th>
+            </tr>
+          </thead>
+          <tbody>
+            {report.deltas.map((d, i) => {
+              const varNum = d.variance_pct ? parseFloat(d.variance_pct) : null;
+              let varColor = '#64748b';
+              if (varNum !== null) {
+                const abs = Math.abs(varNum);
+                if (abs > 25) varColor = '#dc2626';
+                else if (abs > 10) varColor = '#d97706';
+                else varColor = '#16a34a';
+              }
+              return (
+                <tr key={i}>
+                  <td style={{ fontWeight: 600, textTransform: 'capitalize' }}>
+                    {d.field.replace(/_/g, ' ')}
+                  </td>
+                  <td className="td-mono">{d.predicted != null ? (d.field.includes('min') ? `${d.predicted} min` : `$${d.predicted}`) : '—'}</td>
+                  <td className="td-mono">{d.actual != null ? (d.field.includes('min') ? `${d.actual} min` : `$${d.actual}`) : '—'}</td>
+                  <td className="td-mono">{d.delta != null ? (d.field.includes('min') ? `${d.delta} min` : `$${d.delta}`) : '—'}</td>
+                  <td style={{ color: varColor, fontWeight: 600 }}>
+                    {d.variance_pct != null ? `${parseFloat(d.variance_pct) > 0 ? '+' : ''}${d.variance_pct}%` : '—'}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      )}
+
+      {/* Flags */}
+      {report.flags.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <h4 style={{ fontSize: '14px', fontWeight: 600, margin: '0 0 8px' }}>Flags</h4>
+          {report.flags.map((f, i) => (
+            <div key={i} style={{
+              display: 'flex', gap: '8px', alignItems: 'center',
+              padding: '6px 10px', marginBottom: '4px', borderRadius: '4px',
+              background: f.severity === 'high' ? '#fef2f2' : f.severity === 'medium' ? '#fffbeb' : '#f0fdf4',
+              fontSize: '13px',
+            }}>
+              <span style={{
+                fontSize: '11px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px',
+                background: f.severity === 'high' ? '#fee2e2' : f.severity === 'medium' ? '#fef3c7' : '#dcfce7',
+                color: f.severity === 'high' ? '#991b1b' : f.severity === 'medium' ? '#92400e' : '#166534',
+              }}>{f.severity}</span>
+              <span>{f.summary}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Explanations */}
+      {report.explanations.length > 0 && (
+        <div>
+          <h4 style={{ fontSize: '14px', fontWeight: 600, margin: '0 0 8px' }}>Analysis</h4>
+          {report.explanations.map((e, i) => (
+            <p key={i} style={{ fontSize: '13px', color: '#475569', margin: '0 0 4px' }}>{e}</p>
+          ))}
+        </div>
+      )}
+
+      {/* Risk Outcome Report - Learning Loop */}
+      {riskReport && riskReport.has_decision_context && (
+        <div style={{ marginTop: '20px', padding: '12px', background: '#f8fafc', borderRadius: '6px' }}>
+          <h4 style={{ fontSize: '14px', fontWeight: 600, margin: '0 0 12px', color: '#334155' }}>
+            Learning Loop: What We Knew vs What Happened
+          </h4>
+
+          {/* Accuracy badge */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+            <span style={{
+              fontSize: '12px', fontWeight: 600, padding: '3px 8px', borderRadius: '4px',
+              background: riskReport.accuracy_assessment === 'accurate' ? '#dcfce7'
+                : riskReport.accuracy_assessment === 'partially_accurate' ? '#fef3c7'
+                : riskReport.accuracy_assessment === 'inaccurate' ? '#fee2e2' : '#f1f5f9',
+              color: riskReport.accuracy_assessment === 'accurate' ? '#166534'
+                : riskReport.accuracy_assessment === 'partially_accurate' ? '#92400e'
+                : riskReport.accuracy_assessment === 'inaccurate' ? '#991b1b' : '#64748b',
+            }}>
+              {riskReport.accuracy_score}/100 {riskReport.accuracy_assessment.replace(/_/g, ' ').toUpperCase()}
+            </span>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+              Warning accuracy
+            </span>
+          </div>
+
+          {/* Decision context summary */}
+          {riskReport.decision_context && (
+            <div style={{ marginBottom: '12px' }}>
+              <h5 style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>
+                At Decision Time
+              </h5>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', fontSize: '12px' }}>
+                {riskReport.decision_context.trust_label && (
+                  <span style={{
+                    padding: '2px 6px', borderRadius: '3px',
+                    background: riskReport.decision_context.trust_label === 'high' ? '#dcfce7'
+                      : riskReport.decision_context.trust_label === 'medium' ? '#fef3c7' : '#fee2e2',
+                    color: riskReport.decision_context.trust_label === 'high' ? '#166534'
+                      : riskReport.decision_context.trust_label === 'medium' ? '#92400e' : '#991b1b',
+                  }}>
+                    Trust: {riskReport.decision_context.trust_score}/100
+                  </span>
+                )}
+                <span style={{ color: '#64748b' }}>
+                  {riskReport.decision_context.trust_warning_count} warnings
+                </span>
+                {riskReport.decision_context.plan_net_profit && (
+                  <span style={{ color: '#64748b' }}>
+                    Predicted: ${riskReport.decision_context.plan_net_profit}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Warning correlations */}
+          {riskReport.warning_correlations.length > 0 && (
+            <div style={{ marginBottom: '12px' }}>
+              <h5 style={{ fontSize: '12px', fontWeight: 600, color: '#64748b', margin: '0 0 6px' }}>
+                Warning Outcomes
+              </h5>
+              {riskReport.warning_correlations.slice(0, 5).map((c, i) => (
+                <div key={i} style={{
+                  display: 'flex', alignItems: 'center', gap: '6px',
+                  padding: '4px 0', fontSize: '12px', borderBottom: '1px solid #e2e8f0',
+                }}>
+                  <span style={{
+                    fontSize: '10px', fontWeight: 600, padding: '1px 5px', borderRadius: '3px',
+                    background: c.assessment === 'correct' ? '#dcfce7'
+                      : c.assessment === 'false_alarm' ? '#fee2e2'
+                      : c.assessment === 'partially_correct' ? '#fef3c7' : '#f1f5f9',
+                    color: c.assessment === 'correct' ? '#166534'
+                      : c.assessment === 'false_alarm' ? '#991b1b'
+                      : c.assessment === 'partially_correct' ? '#92400e' : '#64748b',
+                    textTransform: 'uppercase',
+                    minWidth: '55px',
+                    textAlign: 'center',
+                  }}>
+                    {c.assessment === 'correct' ? '✓' : c.assessment === 'false_alarm' ? '✗' : '~'}
+                  </span>
+                  <span style={{ fontWeight: 500, color: '#334155' }}>{c.warning_title}</span>
+                  {c.outcome_variance_pct && (
+                    <span style={{ color: '#64748b', marginLeft: 'auto' }}>
+                      {c.outcome_variance_field}: {c.outcome_variance_pct}%
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Learning explanations */}
+          {riskReport.explanations.length > 0 && (
+            <div>
+              {riskReport.explanations.slice(0, 3).map((e, i) => (
+                <p key={i} style={{ fontSize: '11px', color: '#64748b', margin: '0 0 2px' }}>
+                  · {e}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -696,6 +1318,7 @@ export const InspectPanel: React.FC<InspectPanelProps> = ({ plan, pinned, onTogg
                 ['why', 'Why This Plan'],
                 ['intel', 'Intel'],
                 ['copilot', 'Copilot'],
+                ['outcomes', 'Outcomes'],
               ] as [TabId, string][]).map(([id, label]) => (
                 <button
                   key={id}
@@ -715,6 +1338,7 @@ export const InspectPanel: React.FC<InspectPanelProps> = ({ plan, pinned, onTogg
               {activeTab === 'why' && <WhyTab plan={plan} />}
               {activeTab === 'intel' && <IntelTab plan={plan} />}
               {activeTab === 'copilot' && <CopilotTab plan={plan} />}
+              {activeTab === 'outcomes' && <OutcomesTab plan={plan} />}
             </div>
           </>
         )}

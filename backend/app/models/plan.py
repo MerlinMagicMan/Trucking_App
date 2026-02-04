@@ -154,6 +154,11 @@ class Plan(BaseModel):
     loads_analyzed: int = Field(..., ge=0, description="Total loads analyzed")
     plans_generated: int = Field(..., ge=1, description="Total plans generated in this request")
 
+    # Calibration (Stratum 5B) — optional, attached during plan generation
+    estimates_raw: Optional[dict] = Field(None, description="Raw predicted estimates (Decimal strings)")
+    estimates_calibrated: Optional[dict] = Field(None, description="Calibrated estimates or null")
+    calibration_meta: Optional[dict] = Field(None, description="Calibration metadata and explanations")
+
 
 class GeneratePlansResponse(BaseModel):
     """
