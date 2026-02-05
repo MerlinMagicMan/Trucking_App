@@ -16,6 +16,7 @@ from app.engine.economics import EconomicsEngine
 from app.engine.time_engine import TimeEngine
 from app.engine.risk_engine import RiskEngine
 from app.engine.plan_explanations import generate_plan_explanations
+from app.engine.plan_ranker import rank_plans, WeightingFn
 
 
 class PlanGenerator:
@@ -45,6 +46,7 @@ class PlanGenerator:
         max_plans: int = 3,
         radius_miles: int = 250,
         preloaded: Optional[List[CanonicalLoad]] = None,
+        weighting_fn: Optional[WeightingFn] = None,
     ) -> List[Plan]:
         """
         Generate 2-3 alternative multi-load plans
@@ -114,8 +116,10 @@ class PlanGenerator:
         if not finalized_plans:
             return []
 
-        # Step 4: Sort by profit_per_day (descending) with plan_id as tiebreaker
-        finalized_plans.sort(key=lambda p: (-p.profit_per_day_usd, str(p.plan_id)))
+        # Step 4: Rank by economic value (with optional confidence weighting)
+        # Base tier: weighting_fn=None → profit-only ranking
+        # Premium tier: weighting_fn provided → confidence-weighted ranking
+        finalized_plans = rank_plans(finalized_plans, weighting_fn)
 
         # Step 5: Select strategically different plans
         diverse_plans = self._select_diverse_plans(finalized_plans, max_plans)

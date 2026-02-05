@@ -10,7 +10,7 @@ import uuid
 from pydantic import BaseModel
 from app.models.canonical import TruckSnapshot, OptimizeResponse, CanonicalLoad, PickupDeliveryLocation
 from app.api.dependencies import get_org_id
-from app.models.tenant import Route
+from app.models.tenant import Route, Organization
 from app.models.plan import GeneratePlansResponse
 from app.models.events import RecommendationEvent, PlanGenerationEvent
 from app.db.connection import get_db
@@ -24,6 +24,8 @@ from app.models.snapshot import LoadSnapshot
 from decimal import Decimal
 from app.calibration.profile import build_calibration_profile
 from app.calibration.apply import apply_calibration_to_prediction, build_plan_estimates, USE_CALIBRATED_SCORING
+from app.api.trust_routes import build_trust_report_for_plan
+from app.engine.plan_ranker import rank_plans
 
 router = APIRouter()
 
@@ -262,9 +264,36 @@ async def generate_plans(
                 }
                 plan.estimates_calibrated = None
 
-        # Re-sort if calibrated scoring changed profit_per_day
-        if cal_profile and USE_CALIBRATED_SCORING and len(plans) > 1:
-            plans.sort(key=lambda p: (-p.profit_per_day_usd, str(p.plan_id)))
+        # Compute confidence_score for each plan (Stratum 6A)
+        for plan in plans:
+            try:
+                plan_dict = plan.model_dump()
+                trust_report = build_trust_report_for_plan(db, org_id, plan_dict)
+                plan.confidence_score = trust_report.confidence_score
+            except Exception:
+                # Best-effort: if trust computation fails, leave confidence_score as None
+                plan.confidence_score = None
+
+        # Re-rank with optional confidence weighting (Stratum 6A)
+        # Check org tier - premium/enterprise get confidence weighting
+        weighting_fn = None
+        try:
+            org = db.query(Organization).filter(Organization.id == org_id).first()
+            org_tier = org.tier if org else "base"
+        except Exception:
+            org_tier = "base"
+
+        if org_tier in ("premium", "enterprise") and len(plans) > 1:
+            # Premium tier: import and use confidence weighting
+            try:
+                from app.trust.weighting import compute_weighted_score
+                weighting_fn = compute_weighted_score
+            except ImportError:
+                weighting_fn = None
+
+        # Re-rank: either profit-only (base) or confidence-weighted (premium)
+        if len(plans) > 1:
+            plans = rank_plans(plans, weighting_fn)
 
         # Build warnings
         warnings = []

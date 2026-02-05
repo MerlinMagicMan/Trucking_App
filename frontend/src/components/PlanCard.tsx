@@ -139,8 +139,9 @@ export const PlanCard: React.FC<PlanCardProps> = ({ plan, rank, isSelected = fal
             backgroundColor: plan.confidence === 'high' ? '#d1fae5' : plan.confidence === 'medium' ? '#fef3c7' : '#fee2e2',
             color: plan.confidence === 'high' ? '#065f46' : plan.confidence === 'medium' ? '#92400e' : '#991b1b',
           }}
+          title={plan.confidence_score != null ? 'Trust level based on prediction accuracy history' : undefined}
         >
-          {plan.confidence.toUpperCase()} confidence
+          {plan.confidence.toUpperCase()} confidence{plan.confidence_score != null ? ` (${plan.confidence_score})` : ''}
         </span>
 
         {/* Risk indicators */}

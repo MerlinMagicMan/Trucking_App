@@ -15,6 +15,7 @@ class Organization(Base):
 
     id = Column(PG_UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String(255), nullable=False, unique=True)
+    tier = Column(String(20), nullable=False, default="base")  # base, premium, enterprise
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
 

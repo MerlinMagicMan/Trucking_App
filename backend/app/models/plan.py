@@ -145,6 +145,7 @@ class Plan(BaseModel):
     # Scoring
     plan_score: float = Field(..., ge=0, le=100, description="Overall plan quality (0-100)")
     confidence: Literal["low", "medium", "high"] = Field(..., description="Confidence level")
+    confidence_score: Optional[int] = Field(None, ge=0, le=100, description="Numeric confidence score (0-100) for weighting")
 
     # Explanations (why this plan?)
     explanations: List[str] = Field(..., min_length=3, description="At least 3 plain-English reasons")

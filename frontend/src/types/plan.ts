@@ -150,6 +150,7 @@ export interface Plan {
   // Scoring
   plan_score: number; // 0-100
   confidence: Confidence;
+  confidence_score?: number | null; // Numeric confidence score (0-100) for premium tier weighting
 
   // Explanations
   explanations: string[]; // ≥3 reasons
