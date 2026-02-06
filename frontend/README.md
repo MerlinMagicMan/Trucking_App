@@ -7,12 +7,12 @@ React + TypeScript + Vite SPA with React Router.
 This app uses client-side routing (React Router). The `vercel.json` configures SPA fallback so direct navigation to routes like `/admin`, `/copilot`, `/reports` works correctly.
 
 **Vercel Dashboard Settings:**
-- **Root Directory:** `frontend` (or repo root if using root vercel.json)
+- **Root Directory:** `frontend`
 - **Build Command:** `npm run build`
 - **Output Directory:** `dist`
 - **Framework Preset:** Vite
 
-The `vercel.json` rewrites all non-API routes to `index.html`, letting React Router handle routing.
+The `vercel.json` rewrites all routes to `/`, letting React Router handle client-side routing.
 
 ---
 
