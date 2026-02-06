@@ -6,8 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { PreviewBadge } from '../components/shared/PreviewBadge';
 import { UpgradeCTA } from '../components/shared/UpgradeCTA';
-import { fetchPlanHistory } from '../services/api';
-import { fetchPlanStatus } from '../services/copilot';
+import { getDataClient } from '../services/dataClient';
 import type { PlanHistoryItem } from '../types/org';
 import type { CopilotResponse, Signal, Suggestion } from '../types/copilot';
 import '../styles/preview.css';
@@ -24,7 +23,7 @@ export const CopilotPage: React.FC = () => {
 
   // Load plan history for selection
   useEffect(() => {
-    fetchPlanHistory()
+    getDataClient().getPlanHistory()
       .then((data) => {
         setPlans(data);
         setPlansLoading(false);
@@ -43,7 +42,7 @@ export const CopilotPage: React.FC = () => {
     }
 
     setLoadState('loading');
-    fetchPlanStatus(selectedPlanId)
+    getDataClient().getPlanStatus(selectedPlanId)
       .then((data) => {
         if (data) {
           setCopilotData(data);

@@ -4,7 +4,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { PreviewBadge } from '../components/shared/PreviewBadge';
-import { fetchTrucks, fetchRoutes, checkHealth, fetchIngestionStatus } from '../services/api';
+import { getDataClient } from '../services/dataClient';
 import type { IngestionStatus } from '../services/api';
 import '../styles/preview.css';
 
@@ -24,11 +24,12 @@ export const MaintenancePage: React.FC = () => {
   useEffect(() => {
     setLoadState('loading');
 
+    const client = getDataClient();
     Promise.all([
-      fetchTrucks().catch(() => []),
-      fetchRoutes().catch(() => []),
-      checkHealth().catch(() => ({ status: 'offline' })),
-      fetchIngestionStatus().catch(() => null),
+      client.getTrucks().catch(() => []),
+      client.getRoutes().catch(() => []),
+      client.checkHealth().catch(() => ({ status: 'offline' })),
+      client.getIngestionStatus().catch(() => null),
     ])
       .then(([trucks, routes, health, ingestion]) => {
         setStats({

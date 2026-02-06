@@ -1,12 +1,19 @@
 /**
- * Entitlement hook for tier-based feature gating (PREVIEW-001)
+ * Entitlement hook for tier-based feature gating (PREVIEW-001 + DEMO-001)
  *
- * Backend is authoritative for entitlements.
+ * Precedence order:
+ * 1. Admin override (grants enterprise)
+ * 2. Demo org tier (from localStorage)
+ * 3. API org tier
+ * 4. Default base
+ *
+ * Backend is authoritative for entitlements in live mode.
  * Frontend gating is cosmetic only - prevents UI clutter, not security.
  */
 import { useState, useEffect } from 'react';
 import { getActiveOrgId } from '../services/orgContext';
-import { fetchOrgs } from '../services/api';
+import { getAdminOverride } from '../services/demoConfig';
+import { getDataClient } from '../services/dataClient';
 
 export type Tier = 'base' | 'premium' | 'enterprise';
 
@@ -17,6 +24,7 @@ export interface Entitlement {
   isPremium: boolean;
   isEnterprise: boolean;
   isLoading: boolean;
+  isAdminOverride: boolean;
   canAccess: (feature: Feature) => boolean;
 }
 
@@ -53,22 +61,36 @@ export function useEntitlement(): Entitlement {
   const [orgId, setOrgId] = useState<string | null>(null);
   const [orgName, setOrgName] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isAdminOverride, setIsAdminOverride] = useState(false);
 
   useEffect(() => {
     const activeOrgId = getActiveOrgId();
     setOrgId(activeOrgId);
+
+    // Check admin override FIRST (highest precedence)
+    if (getAdminOverride()) {
+      setTier('enterprise');
+      setIsAdminOverride(true);
+      setOrgName('Admin Override');
+      setIsLoading(false);
+      return;
+    }
+
+    setIsAdminOverride(false);
 
     if (!activeOrgId) {
       setIsLoading(false);
       return;
     }
 
-    fetchOrgs()
+    // Use dataClient (works in both demo and live modes)
+    getDataClient()
+      .getOrgs()
       .then((orgs) => {
         const org = orgs.find((o) => o.id === activeOrgId);
         if (org) {
           setOrgName(org.name);
-          // Tier comes from API response - default to 'base' if not present
+          // Tier comes from org - default to 'base' if not present
           const orgTier = (org as any).tier as Tier | undefined;
           setTier(orgTier || 'base');
         }
@@ -83,6 +105,10 @@ export function useEntitlement(): Entitlement {
   }, []);
 
   const canAccess = (feature: Feature): boolean => {
+    // Admin override grants access to everything
+    if (isAdminOverride) {
+      return true;
+    }
     const requiredTier = FEATURE_TIERS[feature];
     return TIER_LEVELS[tier] >= TIER_LEVELS[requiredTier];
   };
@@ -94,6 +120,7 @@ export function useEntitlement(): Entitlement {
     isPremium: tier === 'premium' || tier === 'enterprise',
     isEnterprise: tier === 'enterprise',
     isLoading,
+    isAdminOverride,
     canAccess,
   };
 }

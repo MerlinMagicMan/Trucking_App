@@ -16,6 +16,7 @@ import { IntelPage } from './pages/IntelPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { MaintenancePage } from './pages/MaintenancePage';
+import { AdminPage } from './pages/AdminPage';
 import './styles/index.css';
 
 const queryClient = new QueryClient({
@@ -43,6 +44,7 @@ function App() {
             <Route path="/plans/history" element={<PlanHistoryPage />} />
             <Route path="/reports" element={<ReportsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/admin" element={<AdminPage />} />
             <Route path="/snapshot" element={<TruckSnapshotPage />} />
             <Route path="/recommendations" element={<RecommendationsPage />} />
             <Route path="/forward-look" element={<ForwardLookPage />} />

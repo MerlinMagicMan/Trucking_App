@@ -6,12 +6,8 @@ import React, { useState } from 'react';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { PreviewBadge } from '../components/shared/PreviewBadge';
 import { UpgradeCTA } from '../components/shared/UpgradeCTA';
-import {
-  fetchLaneIntel,
-  fetchMarketIntel,
-  fetchDestinationIntel,
-  fetchNegotiationIntel,
-} from '../services/intel';
+import { getDataClient } from '../services/dataClient';
+import { fetchNegotiationIntel } from '../services/intel';
 import type {
   IntelResponse,
   LaneIntelData,
@@ -46,11 +42,12 @@ export const IntelPage: React.FC = () => {
 
     setLoadState('loading');
     try {
+      const client = getDataClient();
       const [lane, market, dest, nego] = await Promise.all([
-        fetchLaneIntel(origin, destination),
-        fetchMarketIntel(origin),
-        fetchDestinationIntel(destination),
-        fetchNegotiationIntel(origin, destination, 2500), // Example offered rate
+        client.getLaneIntel(origin, destination),
+        client.getMarketIntel(origin),
+        client.getDestinationIntel(destination),
+        fetchNegotiationIntel(origin, destination, 2500), // Example offered rate (still uses live API)
       ]);
 
       setLaneData(lane);

@@ -1,11 +1,18 @@
-/* Enterprise App Shell (Phase 2A) */
+/* Enterprise App Shell (Phase 2A + Desktop Hardening) */
 
 .shell {
   display: grid;
-  grid-template-columns: 220px 1fr;
-  grid-template-rows: 52px 1fr;
+  grid-template-columns: 200px 1fr;
+  grid-template-rows: 56px 1fr;
   height: 100vh;
   overflow: hidden;
+}
+
+@media (min-width: 1280px) {
+  .shell {
+    grid-template-columns: 180px 1fr;
+    grid-template-rows: 48px 1fr;
+  }
 }
 
 /* ---- Sidebar ---- */
@@ -415,4 +422,167 @@
 
 .history-meta strong {
   color: #0f172a;
+}
+
+/* =============================================================================
+   DESKTOP DENSITY IMPROVEMENTS (≥1280px)
+   ============================================================================= */
+
+@media (min-width: 1280px) {
+  /* Tighter topbar */
+  .shell-topbar {
+    height: 48px;
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .shell {
+    grid-template-rows: 48px 1fr;
+  }
+
+  /* Tighter nav items */
+  .shell-nav-item {
+    padding: 6px 10px;
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  .shell-nav-section {
+    padding: 0 10px;
+    margin-bottom: 2px;
+  }
+
+  .shell-nav-section-label {
+    padding: 10px 8px 3px;
+    font-size: 9px;
+  }
+
+  .shell-logo {
+    padding: 12px 14px 6px;
+    font-size: 14px;
+  }
+
+  .shell-logo span {
+    font-size: 10px;
+  }
+
+  /* Denser canvas */
+  .shell-canvas {
+    padding: 0;
+  }
+
+  /* Tighter page containers */
+  .page-container {
+    padding: 16px 20px;
+    max-width: none;
+  }
+
+  .page-header {
+    margin-bottom: 14px;
+  }
+
+  .page-header h1 {
+    font-size: 20px;
+  }
+
+  /* Denser tables */
+  .data-table td {
+    padding: 8px 10px;
+  }
+
+  .data-table th {
+    padding: 6px 10px;
+    font-size: 10px;
+  }
+
+  /* Tighter cards */
+  .card {
+    padding: 14px 16px;
+    margin-bottom: 12px;
+  }
+
+  /* Compact filters */
+  .filters-row {
+    margin-bottom: 12px;
+    gap: 8px;
+  }
+
+  .filter-group input,
+  .filter-group select {
+    padding: 4px 8px;
+    font-size: 12px;
+    min-width: 100px;
+  }
+
+  /* Compact empty state */
+  .empty-state {
+    padding: 40px 20px;
+  }
+
+  .empty-state h2 {
+    font-size: 16px;
+  }
+
+  .empty-state p {
+    font-size: 13px;
+  }
+}
+
+/* Status indicator improvements */
+.shell-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.shell-status-badge.demo {
+  background: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.shell-status-badge.live {
+  background: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.shell-status-badge.live::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: #22c55e;
+  border-radius: 50%;
+  animation: pulse-live 2s ease-in-out infinite;
+}
+
+.shell-status-badge.offline {
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+}
+
+@keyframes pulse-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Admin override warning */
+.shell-admin-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 600;
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
 }

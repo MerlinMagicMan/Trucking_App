@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
-import type { PreflightPreferences, GeneratePlansResponse, GeneratePlansRequest } from '../types/plan';
-import { generatePlans } from '../services/api';
+import React, { useState, useEffect, useCallback } from 'react';
+import type { Plan, PreflightPreferences, GeneratePlansResponse, GeneratePlansRequest } from '../types/plan';
+import { getDataClient } from '../services/dataClient';
 import { PreflightSetup } from '../components/preflight/PreflightSetup';
 import { PreflightResults } from '../components/preflight/PreflightResults';
+import { InspectPanelInline } from '../components/preflight/InspectPanel';
 import '../styles/preflight.css';
 
 export const PreflightPage: React.FC = () => {
@@ -10,6 +11,35 @@ export const PreflightPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
+  const [inspectedPlan, setInspectedPlan] = useState<Plan | null>(null);
+
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    if (!response?.plans.length) return;
+    const currentIndex = inspectedPlan
+      ? response.plans.findIndex(p => p.plan_id === inspectedPlan.plan_id)
+      : -1;
+
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      const nextIndex = currentIndex < response.plans.length - 1 ? currentIndex + 1 : 0;
+      setInspectedPlan(response.plans[nextIndex]);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const prevIndex = currentIndex > 0 ? currentIndex - 1 : response.plans.length - 1;
+      setInspectedPlan(response.plans[prevIndex]);
+    } else if (e.key === '1' || e.key === '2' || e.key === '3') {
+      const idx = parseInt(e.key) - 1;
+      if (idx < response.plans.length) {
+        setInspectedPlan(response.plans[idx]);
+      }
+    }
+  }, [response, inspectedPlan]);
+
+  useEffect(() => {
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleKeyDown]);
 
   const handleSubmit = async (prefs: PreflightPreferences) => {
     setLoading(true);
@@ -29,9 +59,13 @@ export const PreflightPage: React.FC = () => {
         radius_miles: 250,
       };
 
-      const result = await generatePlans(request);
+      const result = await getDataClient().generatePlans(request);
       setResponse(result);
       setLastUpdated(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+      // Auto-select first plan on generate
+      if (result.plans.length > 0) {
+        setInspectedPlan(result.plans[0]);
+      }
     } catch (err: any) {
       const message =
         err.response?.data?.detail ||
@@ -43,8 +77,16 @@ export const PreflightPage: React.FC = () => {
     }
   };
 
+  const handleInspect = (plan: Plan) => {
+    setInspectedPlan(plan);
+  };
+
+  const handleCloseInspect = () => {
+    setInspectedPlan(null);
+  };
+
   return (
-    <div className="pf-workspace">
+    <div className={`pf-workspace ${inspectedPlan ? 'has-inspect' : ''}`}>
       <PreflightSetup
         onSubmit={handleSubmit}
         loading={loading}
@@ -59,8 +101,17 @@ export const PreflightPage: React.FC = () => {
             <strong>Error:</strong> {error}
           </div>
         )}
-        <PreflightResults response={response} />
+        <PreflightResults
+          response={response}
+          inspectedPlan={inspectedPlan}
+          onInspect={handleInspect}
+        />
       </div>
+
+      {/* Inline inspect panel (right column on desktop) */}
+      {inspectedPlan && (
+        <InspectPanelInline plan={inspectedPlan} onClose={handleCloseInspect} />
+      )}
     </div>
   );
 };

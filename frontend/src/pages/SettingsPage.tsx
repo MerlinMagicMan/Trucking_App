@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useEntitlement } from '../hooks/useEntitlement';
 import type { Tier } from '../hooks/useEntitlement';
 import { UpgradeCTA } from '../components/shared/UpgradeCTA';
-import { fetchOrgs, checkHealth } from '../services/api';
+import { getDataClient } from '../services/dataClient';
 import { getActiveOrgId } from '../services/orgContext';
 import type { Org } from '../types/org';
 import '../styles/preview.css';
@@ -47,9 +47,10 @@ export const SettingsPage: React.FC = () => {
     setLoadState('loading');
     const orgId = getActiveOrgId();
 
+    const client = getDataClient();
     Promise.all([
-      fetchOrgs().catch(() => []),
-      checkHealth().catch(() => ({ status: 'offline' })),
+      client.getOrgs().catch(() => []),
+      client.checkHealth().catch(() => ({ status: 'offline' })),
     ])
       .then(([orgs, healthData]) => {
         const currentOrg = orgs.find((o) => o.id === orgId) || null;

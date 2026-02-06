@@ -6,7 +6,7 @@ import React, { useState, useEffect } from 'react';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { PreviewBadge } from '../components/shared/PreviewBadge';
 import { UpgradeCTA } from '../components/shared/UpgradeCTA';
-import { fetchCalibrationReport } from '../services/api';
+import { getDataClient } from '../services/dataClient';
 import type { CalibrationReport, CalibrationMetric } from '../types/plan';
 import '../styles/preview.css';
 
@@ -28,7 +28,7 @@ export const ReportsPage: React.FC = () => {
     if (!canAccess('reports')) return;
 
     setLoadState('loading');
-    fetchCalibrationReport(windowDays)
+    getDataClient().getCalibrationReport(windowDays)
       .then((data) => {
         if (data) {
           if (data.sample_size < 5) {

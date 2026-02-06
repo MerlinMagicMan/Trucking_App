@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Outlet, NavLink } from 'react-router-dom';
 import type { Org, Truck } from '../../types/org';
-import { fetchOrgs, fetchTrucks, fetchIngestionStatus } from '../../services/api';
+import { getDataClient, isDemoActive } from '../../services/dataClient';
 import { getActiveOrgId, setActiveOrgId, getActiveTruckId, setActiveTruckId } from '../../services/orgContext';
 import '../../styles/shell.css';
 
@@ -19,6 +19,7 @@ const NAV_ITEMS = [
   { path: '/reports', label: 'Reports', icon: '▥', badge: 'Preview' },
   { section: '' },
   { path: '/settings', label: 'Settings', icon: '⚙' },
+  { path: '/admin', label: 'Admin', icon: '⚙' },
 ];
 
 export const AppShell: React.FC = () => {
@@ -30,7 +31,8 @@ export const AppShell: React.FC = () => {
 
   // Load orgs on mount
   useEffect(() => {
-    fetchOrgs()
+    getDataClient()
+      .getOrgs()
       .then((data) => {
         setOrgs(data);
         // Default to first org if none selected
@@ -48,7 +50,8 @@ export const AppShell: React.FC = () => {
   // Load trucks when org changes
   useEffect(() => {
     if (!activeOrgId) return;
-    fetchTrucks()
+    getDataClient()
+      .getTrucks()
       .then((data) => {
         setTrucks(data);
         const currentTruck = getActiveTruckId();
@@ -64,9 +67,12 @@ export const AppShell: React.FC = () => {
   useEffect(() => {
     if (!activeOrgId) return;
     const check = () => {
-      fetchIngestionStatus()
+      getDataClient()
+        .getIngestionStatus()
         .then((s) => {
-          if (s.scheduler.running && s.snapshots.active > 0) {
+          if (isDemoActive()) {
+            setDataStatus({ label: 'Demo', color: '#3b82f6' });
+          } else if (s.scheduler.running && s.snapshots.active > 0) {
             setDataStatus({ label: `Live (${s.snapshots.active})`, color: '#22c55e' });
           } else if (s.scheduler.running) {
             setDataStatus({ label: 'Simulated', color: '#eab308' });
@@ -74,7 +80,13 @@ export const AppShell: React.FC = () => {
             setDataStatus({ label: 'Offline', color: '#94a3b8' });
           }
         })
-        .catch(() => setDataStatus({ label: 'Offline', color: '#94a3b8' }));
+        .catch(() => {
+          if (isDemoActive()) {
+            setDataStatus({ label: 'Demo', color: '#3b82f6' });
+          } else {
+            setDataStatus({ label: 'Offline', color: '#94a3b8' });
+          }
+        });
     };
     check();
     const interval = setInterval(check, 60_000);

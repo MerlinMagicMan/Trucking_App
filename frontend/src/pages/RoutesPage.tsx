@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import type { RouteRecord } from '../types/org';
-import { fetchRoutes, deleteRoute } from '../services/api';
+import { getDataClient } from '../services/dataClient';
 import { CsvUpload } from '../components/preflight/CsvUpload';
 
 export const RoutesPage: React.FC = () => {
@@ -16,7 +16,7 @@ export const RoutesPage: React.FC = () => {
       const filters: Record<string, string> = {};
       if (pickupFilter) filters.pickup_state = pickupFilter;
       if (deliveryFilter) filters.delivery_state = deliveryFilter;
-      const data = await fetchRoutes(filters);
+      const data = await getDataClient().getRoutes(filters);
       setRoutes(data);
     } catch {
       setRoutes([]);
@@ -29,7 +29,7 @@ export const RoutesPage: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      await deleteRoute(id);
+      await getDataClient().deleteRoute(id);
       setRoutes((prev) => prev.filter((r) => r.id !== id));
     } catch {
       // ignore

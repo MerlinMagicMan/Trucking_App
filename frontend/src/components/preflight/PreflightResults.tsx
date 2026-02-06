@@ -1,25 +1,18 @@
-import React, { useState } from 'react';
+import React from 'react';
 import type { Plan, GeneratePlansResponse } from '../../types/plan';
 import { PlanColumn } from './PlanColumn';
-import { InspectPanel } from './InspectPanel';
 
 interface PreflightResultsProps {
   response: GeneratePlansResponse | null;
+  inspectedPlan: Plan | null;
+  onInspect: (plan: Plan) => void;
 }
 
-export const PreflightResults: React.FC<PreflightResultsProps> = ({ response }) => {
-  const [inspectedPlan, setInspectedPlan] = useState<Plan | null>(null);
-  const [panelPinned, setPanelPinned] = useState(false);
-
-  const handleInspect = (plan: Plan) => {
-    setInspectedPlan(plan);
-  };
-
-  const handleClosePanel = () => {
-    setInspectedPlan(null);
-    setPanelPinned(false);
-  };
-
+export const PreflightResults: React.FC<PreflightResultsProps> = ({
+  response,
+  inspectedPlan,
+  onInspect,
+}) => {
   if (!response) {
     return (
       <div className="pf-canvas-empty">
@@ -56,18 +49,11 @@ export const PreflightResults: React.FC<PreflightResultsProps> = ({ response }) 
             key={plan.plan_id}
             plan={plan}
             rank={i + 1}
-            onInspect={handleInspect}
+            onInspect={onInspect}
+            isSelected={inspectedPlan?.plan_id === plan.plan_id}
           />
         ))}
       </div>
-
-      {/* Inspect Panel */}
-      <InspectPanel
-        plan={inspectedPlan}
-        pinned={panelPinned}
-        onTogglePin={() => setPanelPinned(!panelPinned)}
-        onClose={handleClosePanel}
-      />
     </>
   );
 };

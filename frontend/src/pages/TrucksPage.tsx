@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import type { Truck } from '../types/org';
-import { fetchTrucks, createTruck } from '../services/api';
+import { getDataClient } from '../services/dataClient';
 import { getActiveTruckId, setActiveTruckId } from '../services/orgContext';
 
 export const TrucksPage: React.FC = () => {
@@ -19,7 +19,7 @@ export const TrucksPage: React.FC = () => {
   const loadTrucks = async () => {
     setLoading(true);
     try {
-      const data = await fetchTrucks();
+      const data = await getDataClient().getTrucks();
       setTrucks(data);
     } catch {
       setTrucks([]);
@@ -39,7 +39,7 @@ export const TrucksPage: React.FC = () => {
     if (!name.trim()) return;
     setCreating(true);
     try {
-      await createTruck({
+      await getDataClient().createTruck({
         name: name.trim(),
         equipment_type: equipment,
         home_base_city: city.trim() || undefined,

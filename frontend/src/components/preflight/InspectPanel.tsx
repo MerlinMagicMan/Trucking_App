@@ -1264,7 +1264,79 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
   );
 };
 
-// ---- Main Panel ----
+// ---- Inline Panel (desktop tri-pane) ----
+
+interface InspectPanelInlineProps {
+  plan: Plan;
+  onClose: () => void;
+}
+
+export const InspectPanelInline: React.FC<InspectPanelInlineProps> = ({ plan, onClose }) => {
+  const [activeTab, setActiveTab] = useState<TabId>('economics');
+
+  // ESC to close
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  // Get route name for header
+  const routeName = (() => {
+    if (plan.loads.length === 0) return 'Plan Details';
+    const cities = [plan.loads[0].load.pickup.city];
+    plan.loads.forEach(l => cities.push(l.load.delivery.city));
+    return cities.join(' → ');
+  })();
+
+  return (
+    <div className="pf-inspect-inline">
+      <div className="pf-panel-inline">
+        <div className="pf-panel-header">
+          <h2>{routeName}</h2>
+          <button className="pf-panel-close" onClick={onClose} type="button" title="Close">
+            &times;
+          </button>
+        </div>
+
+        <nav className="pf-panel-tabs">
+          {([
+            ['economics', '$'],
+            ['timeline', 'Time'],
+            ['copilot', 'AI'],
+            ['intel', 'Intel'],
+            ['risk', 'Risk'],
+            ['outcomes', 'Track'],
+            ['why', 'Why'],
+          ] as [TabId, string][]).map(([id, label]) => (
+            <button
+              key={id}
+              className={`pf-panel-tab ${activeTab === id ? 'active' : ''}`}
+              onClick={() => setActiveTab(id)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        <div className="pf-panel-body">
+          {activeTab === 'timeline' && <TimelineTab plan={plan} />}
+          {activeTab === 'economics' && <EconomicsTab plan={plan} />}
+          {activeTab === 'risk' && <RiskTab plan={plan} />}
+          {activeTab === 'why' && <WhyTab plan={plan} />}
+          {activeTab === 'intel' && <IntelTab plan={plan} />}
+          {activeTab === 'copilot' && <CopilotTab plan={plan} />}
+          {activeTab === 'outcomes' && <OutcomesTab plan={plan} />}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ---- Main Panel (overlay mode - mobile only) ----
 
 export const InspectPanel: React.FC<InspectPanelProps> = ({ plan, pinned, onTogglePin, onClose }) => {
   const [activeTab, setActiveTab] = useState<TabId>('timeline');

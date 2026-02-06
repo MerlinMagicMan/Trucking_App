@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { getDataClient } from '../../services/dataClient';
 
 interface CsvRow {
   route_name: string;
@@ -74,23 +75,13 @@ export const CsvUpload: React.FC<CsvUploadProps> = ({ onImported }) => {
     setUploading(true);
     setError(null);
     try {
-      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-      const resp = await fetch(`${API_BASE}/api/routes/import`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ routes: rows }),
-      });
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}));
-        throw new Error(data.detail || `Import failed (${resp.status})`);
-      }
-      const data = await resp.json();
-      setStatus(`${data.imported} routes imported`);
-      onImported(data.imported);
+      const result = await getDataClient().importRoutes(rows);
+      setStatus(`${result.imported} routes imported`);
+      onImported(result.imported);
       setRows([]);
       setHeaders([]);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Import failed');
     } finally {
       setUploading(false);
     }
