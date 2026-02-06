@@ -57,26 +57,24 @@ const TIER_LEVELS: Record<Tier, number> = {
 };
 
 export function useEntitlement(): Entitlement {
-  const [tier, setTier] = useState<Tier>('base');
-  const [orgId, setOrgId] = useState<string | null>(null);
-  const [orgName, setOrgName] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isAdminOverride, setIsAdminOverride] = useState(false);
+  // Check admin override SYNCHRONOUSLY to avoid flash of paywall
+  // This runs during initial render, before any useEffect
+  const adminOverrideActive = getAdminOverride();
+
+  const [tier, setTier] = useState<Tier>(adminOverrideActive ? 'enterprise' : 'base');
+  const [orgId, setOrgId] = useState<string | null>(getActiveOrgId());
+  const [orgName, setOrgName] = useState<string | null>(adminOverrideActive ? 'Admin Override' : null);
+  const [isLoading, setIsLoading] = useState(!adminOverrideActive);
+  const [isAdminOverride] = useState(adminOverrideActive);
 
   useEffect(() => {
-    const activeOrgId = getActiveOrgId();
-    setOrgId(activeOrgId);
-
-    // Check admin override FIRST (highest precedence)
-    if (getAdminOverride()) {
-      setTier('enterprise');
-      setIsAdminOverride(true);
-      setOrgName('Admin Override');
-      setIsLoading(false);
+    // If admin override is active, we already have correct state - skip
+    if (isAdminOverride) {
       return;
     }
 
-    setIsAdminOverride(false);
+    const activeOrgId = getActiveOrgId();
+    setOrgId(activeOrgId);
 
     if (!activeOrgId) {
       setIsLoading(false);
@@ -102,7 +100,7 @@ export function useEntitlement(): Entitlement {
       .finally(() => {
         setIsLoading(false);
       });
-  }, []);
+  }, [isAdminOverride]);
 
   const canAccess = (feature: Feature): boolean => {
     // Admin override grants access to everything
