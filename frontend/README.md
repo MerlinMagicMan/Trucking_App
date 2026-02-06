@@ -1,4 +1,22 @@
-# React + TypeScript + Vite
+# Truck Optimizer Frontend
+
+React + TypeScript + Vite SPA with React Router.
+
+## Vercel Deployment
+
+This app uses client-side routing (React Router). The `vercel.json` configures SPA fallback so direct navigation to routes like `/admin`, `/copilot`, `/reports` works correctly.
+
+**Vercel Dashboard Settings:**
+- **Root Directory:** `frontend` (or repo root if using root vercel.json)
+- **Build Command:** `npm run build`
+- **Output Directory:** `dist`
+- **Framework Preset:** Vite
+
+The `vercel.json` rewrites all non-API routes to `index.html`, letting React Router handle routing.
+
+---
+
+## Development
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
