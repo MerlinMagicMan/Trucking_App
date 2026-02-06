@@ -8,17 +8,17 @@ import '../../styles/shell.css';
 const NAV_ITEMS = [
   { section: 'Planning' },
   { path: '/plans', label: 'Preflight', icon: '◈' },
-  { path: '#', label: 'Copilot', icon: '◉', disabled: true, badge: 'Soon' },
-  { path: '#', label: 'TTC', icon: '◎', disabled: true, badge: 'Soon' },
+  { path: '/copilot', label: 'Copilot', icon: '◉', badge: 'Preview' },
+  { path: '/intel', label: 'Intel', icon: '◎', badge: 'Preview' },
   { section: 'Data' },
   { path: '/routes', label: 'Routes', icon: '⇄' },
   { path: '/assets/trucks', label: 'Trucks', icon: '▣' },
-  { path: '#', label: 'Maintenance', icon: '⚙', disabled: true, badge: 'Soon' },
+  { path: '/maintenance', label: 'Maintenance', icon: '⚙', badge: 'Preview' },
   { section: 'Analytics' },
   { path: '/plans/history', label: 'Plans History', icon: '▤' },
-  { path: '#', label: 'Reports', icon: '▥', disabled: true, badge: 'Soon' },
+  { path: '/reports', label: 'Reports', icon: '▥', badge: 'Preview' },
   { section: '' },
-  { path: '#', label: 'Settings', icon: '⚙', disabled: true },
+  { path: '/settings', label: 'Settings', icon: '⚙' },
 ];
 
 export const AppShell: React.FC = () => {
@@ -138,6 +138,7 @@ export const AppShell: React.FC = () => {
                 >
                   <span className="nav-icon">{navItem.icon}</span>
                   {navItem.label}
+                  {navItem.badge && <span className="nav-badge">{navItem.badge}</span>}
                 </NavLink>
               </div>
             );

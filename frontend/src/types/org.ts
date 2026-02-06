@@ -2,9 +2,12 @@
  * Multi-tenant types (Phase 2A)
  */
 
+export type Tier = 'base' | 'premium' | 'enterprise';
+
 export interface Org {
   id: string;
   name: string;
+  tier: Tier;
   created_at: string;
 }
 

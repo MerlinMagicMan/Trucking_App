@@ -1,0 +1,377 @@
+/* Preview Pages Styles (PREVIEW-001) */
+
+/* ---- Page Header with Badge ---- */
+
+.preview-page-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.preview-page-header h1 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0;
+}
+
+.preview-page-subtitle {
+  font-size: 13px;
+  color: #64748b;
+  margin: 4px 0 0;
+}
+
+/* ---- Preview Layout (Desktop Two-Panel) ---- */
+
+.preview-layout {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 24px;
+  height: calc(100vh - 52px - 48px); /* topbar + header */
+}
+
+.preview-layout-full {
+  display: block;
+}
+
+.preview-sidebar {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.preview-main {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  overflow-y: auto;
+}
+
+/* ---- Section Headers ---- */
+
+.preview-section {
+  margin-bottom: 24px;
+}
+
+.preview-section-header {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+/* ---- Metric Cards ---- */
+
+.preview-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.preview-metric-card {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.preview-metric-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-bottom: 4px;
+}
+
+.preview-metric-value {
+  font-size: 28px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.preview-metric-value.green {
+  color: #059669;
+}
+
+.preview-metric-value.amber {
+  color: #d97706;
+}
+
+.preview-metric-value.red {
+  color: #dc2626;
+}
+
+.preview-metric-delta {
+  font-size: 12px;
+  color: #64748b;
+  margin-top: 4px;
+}
+
+/* ---- Data List ---- */
+
+.preview-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.preview-list-item {
+  padding: 12px 0;
+  border-bottom: 1px solid #f1f5f9;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.preview-list-item:last-child {
+  border-bottom: none;
+}
+
+.preview-list-label {
+  font-size: 13px;
+  color: #334155;
+}
+
+.preview-list-value {
+  font-size: 13px;
+  font-weight: 600;
+  color: #0f172a;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+}
+
+/* ---- Insights List ---- */
+
+.preview-insights {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.preview-insight {
+  padding: 12px 16px;
+  background: #fffbeb;
+  border-left: 3px solid #f59e0b;
+  margin-bottom: 8px;
+  border-radius: 0 6px 6px 0;
+  font-size: 13px;
+  color: #92400e;
+}
+
+.preview-insight.info {
+  background: #eff6ff;
+  border-left-color: #3b82f6;
+  color: #1e40af;
+}
+
+.preview-insight.success {
+  background: #ecfdf5;
+  border-left-color: #10b981;
+  color: #065f46;
+}
+
+/* ---- Empty/Loading States ---- */
+
+.preview-empty {
+  text-align: center;
+  padding: 48px 20px;
+  color: #94a3b8;
+}
+
+.preview-empty h3 {
+  font-size: 16px;
+  font-weight: 600;
+  color: #64748b;
+  margin: 0 0 8px;
+}
+
+.preview-empty p {
+  font-size: 13px;
+  margin: 0;
+}
+
+.preview-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  color: #64748b;
+  font-size: 14px;
+}
+
+.preview-offline {
+  text-align: center;
+  padding: 24px;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  color: #991b1b;
+  font-size: 14px;
+}
+
+/* ---- Search/Filter Inputs ---- */
+
+.preview-search {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.preview-search-input {
+  flex: 1;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+  color: #0f172a;
+}
+
+.preview-search-input:focus {
+  outline: none;
+  border-color: #2563eb;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.preview-search-btn {
+  background: #2563eb;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 10px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.preview-search-btn:hover {
+  background: #1d4ed8;
+}
+
+.preview-search-btn:disabled {
+  background: #94a3b8;
+  cursor: not-allowed;
+}
+
+/* ---- Settings Page ---- */
+
+.settings-section {
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+
+.settings-section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0f172a;
+  margin: 0 0 16px;
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-label {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.settings-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: #0f172a;
+}
+
+.settings-tier-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 16px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.settings-tier-badge.base {
+  background: #f1f5f9;
+  color: #475569;
+}
+
+.settings-tier-badge.premium {
+  background: #f3e8ff;
+  color: #7c3aed;
+}
+
+.settings-tier-badge.enterprise {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+/* ---- Stub Page (Maintenance) ---- */
+
+.stub-container {
+  text-align: center;
+  padding: 60px 20px;
+}
+
+.stub-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.stub-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 8px;
+}
+
+.stub-description {
+  font-size: 14px;
+  color: #64748b;
+  margin: 0 0 32px;
+}
+
+.stub-stats {
+  display: flex;
+  justify-content: center;
+  gap: 32px;
+  margin-bottom: 32px;
+}
+
+.stub-stat {
+  text-align: center;
+}
+
+.stub-stat-value {
+  font-size: 24px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.stub-stat-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: #64748b;
+}
