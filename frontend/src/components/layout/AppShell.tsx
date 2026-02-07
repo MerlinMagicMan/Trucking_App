@@ -12,7 +12,7 @@ const NAV_ITEMS = [
   { path: '/intel', label: 'Intel', icon: '◎', badge: 'Preview' },
   { section: 'Data' },
   { path: '/routes', label: 'Routes', icon: '⇄' },
-  { path: '/assets/trucks', label: 'Trucks', icon: '▣' },
+  { path: '/trucks', label: 'Trucks', icon: '▣' },
   { path: '/maintenance', label: 'Maintenance', icon: '⚙', badge: 'Preview' },
   { section: 'Analytics' },
   { path: '/plans/history', label: 'Plans History', icon: '▤' },

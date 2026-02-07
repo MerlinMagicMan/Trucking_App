@@ -7,17 +7,11 @@ import type {
   DestinationIntelData,
   NegotiationIntelData,
 } from '../../types/intel';
-import {
-  fetchLaneIntel,
-  fetchMarketIntel,
-  fetchDestinationIntel,
-  fetchNegotiationIntel,
-} from '../../services/intel';
-import type { CopilotResponse, BranchPlanResponse, EvaluationHistoryItem, EvaluationReplayResponse, PlanTrustReport } from '../../types/copilot';
-import type { OutcomeReport, RiskOutcomeReport } from '../../types/plan';
-import { fetchPlanStatus, branchPlans, fetchEvaluationHistory, replayEvaluation } from '../../services/copilot';
-import { fetchOutcomeReport, createDecision, fetchDecisions, fetchTrustReport, fetchRiskOutcomeReport } from '../../services/api';
-import type { DecisionResponse } from '../../types/plan';
+import type { CopilotResponse, BranchPlanResponse, EvaluationHistoryItem, EvaluationReplayResponse } from '../../types/copilot';
+import type { OutcomeReport, RiskOutcomeReport, DecisionResponse } from '../../types/plan';
+import type { PlanTrustReport } from '../../services/api';
+import { branchPlans, fetchEvaluationHistory, replayEvaluation } from '../../services/copilot';
+import { getDataClient } from '../../services/dataClient';
 
 interface InspectPanelProps {
   plan: Plan | null;
@@ -26,7 +20,7 @@ interface InspectPanelProps {
   onClose: () => void;
 }
 
-type TabId = 'timeline' | 'economics' | 'risk' | 'why' | 'intel' | 'copilot' | 'outcomes';
+type TabId = 'timeline' | 'economics' | 'risk' | 'why' | 'intel' | 'copilot' | 'outcomes' | 'ranking';
 
 const formatTime = (iso: string): string => {
   const d = new Date(iso);
@@ -326,11 +320,12 @@ const IntelTab: React.FC<{ plan: Plan }> = ({ plan }) => {
     let cancelled = false;
     setState(s => ({ ...s, status: 'loading' }));
 
+    const client = getDataClient();
     Promise.all([
-      fetchLaneIntel(originGh, destGh),
-      fetchMarketIntel(destGh),
-      fetchDestinationIntel(destGh),
-      fetchNegotiationIntel(originGh, destGh, firstLoad.rate_total),
+      client.getLaneIntel(originGh, destGh),
+      client.getMarketIntel(destGh),
+      client.getDestinationIntel(destGh),
+      client.getNegotiationIntel(originGh, destGh, firstLoad.rate_total),
     ]).then(([lane, market, destination, negotiation]) => {
       if (cancelled) return;
       const allFailed = !lane && !market && !destination && !negotiation;
@@ -633,7 +628,8 @@ const CopilotTab: React.FC<{ plan: Plan }> = ({ plan }) => {
     let cancelled = false;
     setState({ status: 'loading', data: null });
 
-    fetchPlanStatus(plan.plan_id).then((result) => {
+    const client = getDataClient();
+    client.getPlanStatus(plan.plan_id).then((result) => {
       if (cancelled) return;
       setState({ status: 'loaded', data: result });
     });
@@ -930,7 +926,102 @@ const CopilotTab: React.FC<{ plan: Plan }> = ({ plan }) => {
   );
 };
 
+// ---- Ranking Tab (NEXT-002 v1.1) ----
+
+const RankingTab: React.FC<{ plan: Plan }> = ({ plan }) => {
+  const bd = plan.ranking_breakdown;
+  if (!bd) {
+    return (
+      <div className="pf-tab-section">
+        <p className="pf-intel-offline">Ranking data not available for this plan.</p>
+      </div>
+    );
+  }
+
+  const avail = bd.availability;
+  const na = (available: boolean) =>
+    available ? null : <span style={{ fontSize: '10px', color: '#94a3b8', fontStyle: 'italic', marginLeft: '4px' }}>(no data)</span>;
+
+  return (
+    <div>
+      {/* Final Score */}
+      <div className="pf-tab-section" style={{ textAlign: 'center', paddingBottom: '16px' }}>
+        <div style={{ fontSize: '36px', fontWeight: 700, color: '#059669' }}>
+          {bd.final_score}
+        </div>
+        <div style={{ fontSize: '13px', color: '#64748b' }}>Final Score</div>
+      </div>
+
+      {/* Explanation */}
+      {plan.ranking_explanation && (
+        <div className="pf-insight" style={{ marginBottom: '16px' }}>
+          {plan.ranking_explanation}
+        </div>
+      )}
+
+      {/* Breakdown table */}
+      <div className="pf-tab-section">
+        <h3>Score Breakdown</h3>
+
+        <div className="pf-econ-row">
+          <span>Base Profit Score</span>
+          <span style={{ fontWeight: 600 }}>{bd.base_profit_score}/100</span>
+        </div>
+        <div style={{ fontSize: '11px', color: '#94a3b8', marginBottom: '8px', paddingLeft: '4px' }}>
+          Within-batch normalized &middot; ${Math.round(bd.profit_per_day_cents / 100)}/day
+        </div>
+
+        <div className="pf-econ-row">
+          <span>Confidence Multiplier{na(avail.has_confidence_score)}</span>
+          <span style={{ fontWeight: 600 }}>×{bd.confidence_multiplier.toFixed(2)}</span>
+        </div>
+
+        <div className="pf-econ-row">
+          <span style={{ color: '#dc2626' }}>Deadhead Penalty</span>
+          <span style={{ fontWeight: 600, color: bd.deadhead_penalty > 0 ? '#dc2626' : '#059669' }}>
+            {bd.deadhead_penalty > 0 ? `-${bd.deadhead_penalty}` : '0'}
+          </span>
+        </div>
+
+        <div className="pf-econ-row">
+          <span style={{ color: '#059669' }}>Reload Bonus{na(avail.reload_bonus_available)}</span>
+          <span style={{ fontWeight: 600, color: bd.reload_bonus > 0 ? '#059669' : '#64748b' }}>
+            {bd.reload_bonus > 0 ? `+${bd.reload_bonus}` : '0'}
+          </span>
+        </div>
+
+        <div className="pf-econ-row">
+          <span style={{ color: '#dc2626' }}>Dwell Penalty{na(avail.dwell_penalty_available)}</span>
+          <span style={{ fontWeight: 600, color: bd.dwell_penalty > 0 ? '#dc2626' : '#059669' }}>
+            {bd.dwell_penalty > 0 ? `-${bd.dwell_penalty}` : '0'}
+          </span>
+        </div>
+
+        <div className="pf-econ-row pf-econ-total">
+          <span>Final Score</span>
+          <span style={{ fontWeight: 700, fontSize: '18px', color: '#059669' }}>
+            {bd.final_score}
+          </span>
+        </div>
+      </div>
+
+      {/* Formula note */}
+      <div style={{ fontSize: '11px', color: '#94a3b8', padding: '8px 0' }}>
+        Formula: (base × confidence) − deadhead + reload − dwell
+      </div>
+    </div>
+  );
+};
+
 // ---- Outcomes Tab ----
+
+interface ActualsFormState {
+  revenue: string;
+  fuel_spend: string;
+  miles_loaded: string;
+  drive_min: string;
+  notes: string;
+}
 
 const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
   const [report, setReport] = useState<OutcomeReport | null>(null);
@@ -940,18 +1031,21 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
   const [error, setError] = useState<string | null>(null);
   const [trust, setTrust] = useState<PlanTrustReport | null | undefined>(undefined);
   const [riskReport, setRiskReport] = useState<RiskOutcomeReport | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [formData, setFormData] = useState<ActualsFormState>({
+    revenue: '', fuel_spend: '', miles_loaded: '', drive_min: '', notes: '',
+  });
 
-  useEffect(() => {
+  const loadData = () => {
     setLoading(true);
     setError(null);
-    setDecision(null);
-    setTrust(undefined);
-    setRiskReport(null);
+    const client = getDataClient();
     Promise.all([
-      fetchOutcomeReport(plan.plan_id).catch(() => null),
-      fetchDecisions(plan.plan_id),
-      fetchTrustReport(plan.plan_id).catch(() => null),
-      fetchRiskOutcomeReport(plan.plan_id).catch(() => null),
+      client.getOutcomeReport(plan.plan_id).catch(() => null),
+      client.getDecisions(plan.plan_id),
+      client.getTrustReport(plan.plan_id).catch(() => null),
+      client.getRiskOutcomeReport(plan.plan_id).catch(() => null),
     ]).then(([rpt, decisions, trustRpt, risk]) => {
       setReport(rpt);
       setTrust(trustRpt);
@@ -959,19 +1053,38 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
       if (decisions.length > 0) {
         setDecision(decisions[0]);
       }
+      // Pre-fill form with existing actuals
+      if (rpt?.actuals) {
+        setFormData({
+          revenue: rpt.actuals.revenue || '',
+          fuel_spend: rpt.actuals.fuel_spend || '',
+          miles_loaded: rpt.actuals.miles_loaded?.toString() || '',
+          drive_min: rpt.actuals.drive_min?.toString() || '',
+          notes: rpt.actuals.notes || '',
+        });
+      }
     }).finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    setDecision(null);
+    setTrust(undefined);
+    setRiskReport(null);
+    loadData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plan.plan_id]);
 
   const handleAccept = async () => {
     setDeciding(true);
     setError(null);
     try {
-      const d = await createDecision({ plan_id: plan.plan_id, decision_type: 'accepted' });
+      const client = getDataClient();
+      const d = await client.createDecision({ plan_id: plan.plan_id, decision_type: 'accepted' });
       setDecision(d);
-      const r = await fetchOutcomeReport(plan.plan_id);
+      const r = await client.getOutcomeReport(plan.plan_id);
       setReport(r);
     } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Failed to accept plan');
+      setError(e?.response?.data?.detail || e?.message || 'Failed to accept plan');
     } finally {
       setDeciding(false);
     }
@@ -979,28 +1092,56 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
 
   const handleReject = async () => {
     const reason = window.prompt('Reason for rejection (optional):');
-    if (reason === null) return; // User cancelled prompt
+    if (reason === null) return;
     setDeciding(true);
     setError(null);
     try {
-      const d = await createDecision({
+      const client = getDataClient();
+      const d = await client.createDecision({
         plan_id: plan.plan_id,
         decision_type: 'rejected',
         reason: reason || undefined,
       });
       setDecision(d);
     } catch (e: any) {
-      setError(e?.response?.data?.detail || 'Failed to reject plan');
+      setError(e?.response?.data?.detail || e?.message || 'Failed to reject plan');
     } finally {
       setDeciding(false);
     }
   };
 
+  const handleSaveActuals = async (markComplete: boolean) => {
+    if (!report?.outcome_id) {
+      setError('No outcome record found');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const client = getDataClient();
+      await client.updateOutcome(report.outcome_id, {
+        actual_revenue: formData.revenue || undefined,
+        actual_fuel_spend: formData.fuel_spend || undefined,
+        actual_miles_loaded: formData.miles_loaded ? parseInt(formData.miles_loaded, 10) : undefined,
+        actual_drive_min: formData.drive_min ? parseInt(formData.drive_min, 10) : undefined,
+        notes: formData.notes || undefined,
+        status: markComplete ? 'complete' : 'partial',
+      });
+      setShowForm(false);
+      loadData();
+    } catch (e: any) {
+      setError(e?.message || 'Failed to save actuals');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) return <div style={{ color: '#94a3b8', padding: '16px' }}>Loading outcomes...</div>;
 
-  // Show decision buttons if no decision or no outcome yet
   const hasOutcome = !!report;
   const lastDecisionType = decision?.decision_type;
+  const outcomeStatus = report?.outcome_status;
+  const isComplete = outcomeStatus === 'complete';
 
   if (!hasOutcome && lastDecisionType !== 'accepted') {
     return (
@@ -1044,7 +1185,7 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
     );
   }
 
-  // Show accepted badge if accepted
+  // Accepted but no report yet
   if (!report && lastDecisionType === 'accepted') {
     return (
       <div style={{ padding: '16px' }}>
@@ -1055,9 +1196,12 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
         }}>
           Accepted — Tracking
         </div>
-        <p style={{ color: '#64748b', fontSize: '13px' }}>
-          Prediction snapshot created. Outcome report will appear once data is available.
+        <p style={{ color: '#64748b', fontSize: '13px', marginBottom: '12px' }}>
+          Prediction snapshot created. Enter actuals when the run completes.
         </p>
+        <a href="/plans/history" style={{ color: '#3b82f6', fontSize: '13px', textDecoration: 'none' }}>
+          View in Plans History →
+        </a>
       </div>
     );
   }
@@ -1066,13 +1210,137 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
 
   return (
     <div>
-      {lastDecisionType === 'accepted' && (
-        <div style={{
-          display: 'inline-block', padding: '3px 10px', borderRadius: '4px',
-          background: '#f0fdf4', color: '#166534', fontSize: '13px', fontWeight: 600,
-          marginBottom: '8px',
-        }}>
-          Accepted — Tracking
+      {/* Status badges */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+        {lastDecisionType === 'accepted' && (
+          <span style={{
+            padding: '3px 10px', borderRadius: '4px',
+            background: '#f0fdf4', color: '#166534', fontSize: '13px', fontWeight: 600,
+          }}>
+            Accepted
+          </span>
+        )}
+        {outcomeStatus && (
+          <span style={{
+            padding: '3px 10px', borderRadius: '4px',
+            background: isComplete ? '#dcfce7' : outcomeStatus === 'partial' ? '#fef3c7' : '#f1f5f9',
+            color: isComplete ? '#166534' : outcomeStatus === 'partial' ? '#92400e' : '#64748b',
+            fontSize: '13px', fontWeight: 600,
+          }}>
+            {isComplete ? 'Complete' : outcomeStatus === 'partial' ? 'Partial' : 'Pending'}
+          </span>
+        )}
+        <a href="/plans/history" style={{ marginLeft: 'auto', color: '#3b82f6', fontSize: '12px', textDecoration: 'none' }}>
+          View History →
+        </a>
+      </div>
+
+      {/* Actuals Entry Form - Show for pending/partial outcomes */}
+      {!isComplete && report.outcome_id && (
+        <div style={{ marginBottom: '16px', padding: '12px', background: '#fffbeb', borderRadius: '6px', border: '1px solid #fef08a' }}>
+          {!showForm ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: '13px', color: '#92400e' }}>
+                {outcomeStatus === 'partial' ? 'Update actuals to complete this outcome' : 'Enter actuals when the run completes'}
+              </span>
+              <button
+                onClick={() => setShowForm(true)}
+                type="button"
+                style={{ background: '#f59e0b', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontWeight: 500, fontSize: '13px' }}
+              >
+                Enter Actuals
+              </button>
+            </div>
+          ) : (
+            <div>
+              <h4 style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: '#92400e' }}>Enter Actual Results</h4>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '2px' }}>Revenue ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.revenue}
+                    onChange={(e) => setFormData({ ...formData, revenue: e.target.value })}
+                    placeholder={report.predicted_summary.revenue || '0.00'}
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '2px' }}>Fuel Cost ($)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={formData.fuel_spend}
+                    onChange={(e) => setFormData({ ...formData, fuel_spend: e.target.value })}
+                    placeholder="0.00"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '2px' }}>Miles Loaded</label>
+                  <input
+                    type="number"
+                    value={formData.miles_loaded}
+                    onChange={(e) => setFormData({ ...formData, miles_loaded: e.target.value })}
+                    placeholder="0"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px' }}
+                  />
+                </div>
+                <div>
+                  <label style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '2px' }}>Drive Time (min)</label>
+                  <input
+                    type="number"
+                    value={formData.drive_min}
+                    onChange={(e) => setFormData({ ...formData, drive_min: e.target.value })}
+                    placeholder="0"
+                    style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px' }}
+                  />
+                </div>
+              </div>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '11px', color: '#64748b', display: 'block', marginBottom: '2px' }}>Notes</label>
+                <input
+                  type="text"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="Optional notes..."
+                  style={{ width: '100%', padding: '6px 8px', borderRadius: '4px', border: '1px solid #e2e8f0', fontSize: '13px' }}
+                />
+              </div>
+              {error && <p style={{ color: '#dc2626', fontSize: '12px', marginBottom: '8px' }}>{error}</p>}
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button
+                  onClick={() => handleSaveActuals(false)}
+                  disabled={saving}
+                  type="button"
+                  style={{ background: '#64748b', color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px', cursor: 'pointer', fontSize: '13px' }}
+                >
+                  {saving ? 'Saving...' : 'Save Draft'}
+                </button>
+                <button
+                  onClick={() => handleSaveActuals(true)}
+                  disabled={saving || !formData.revenue || !formData.fuel_spend}
+                  type="button"
+                  style={{
+                    background: formData.revenue && formData.fuel_spend ? '#16a34a' : '#94a3b8',
+                    color: '#fff', border: 'none', padding: '6px 14px', borderRadius: '4px',
+                    cursor: formData.revenue && formData.fuel_spend ? 'pointer' : 'not-allowed',
+                    fontSize: '13px', fontWeight: 600,
+                  }}
+                >
+                  Mark Complete
+                </button>
+                <button
+                  onClick={() => setShowForm(false)}
+                  type="button"
+                  style={{ background: 'transparent', color: '#64748b', border: 'none', padding: '6px 10px', cursor: 'pointer', fontSize: '13px' }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -1158,7 +1426,17 @@ const OutcomesTab: React.FC<{ plan: Plan }> = ({ plan }) => {
       )}
 
       {/* Risk Outcome Report - Learning Loop */}
-      {riskReport && riskReport.has_decision_context && (
+      {!isComplete && (
+        <div style={{ marginTop: '20px', padding: '12px', background: '#f1f5f9', borderRadius: '6px' }}>
+          <h4 style={{ fontSize: '14px', fontWeight: 600, margin: '0 0 8px', color: '#64748b' }}>
+            Learning Loop
+          </h4>
+          <p style={{ fontSize: '13px', color: '#94a3b8', margin: 0, fontStyle: 'italic' }}>
+            Not available yet — complete the outcome to see what we knew vs what happened.
+          </p>
+        </div>
+      )}
+      {isComplete && riskReport && riskReport.has_decision_context && (
         <div style={{ marginTop: '20px', padding: '12px', background: '#f8fafc', borderRadius: '6px' }}>
           <h4 style={{ fontSize: '14px', fontWeight: 600, margin: '0 0 12px', color: '#334155' }}>
             Learning Loop: What We Knew vs What Happened
@@ -1304,6 +1582,7 @@ export const InspectPanelInline: React.FC<InspectPanelInlineProps> = ({ plan, on
         <nav className="pf-panel-tabs">
           {([
             ['economics', '$'],
+            ['ranking', 'Rank'],
             ['timeline', 'Time'],
             ['copilot', 'AI'],
             ['intel', 'Intel'],
@@ -1325,6 +1604,7 @@ export const InspectPanelInline: React.FC<InspectPanelInlineProps> = ({ plan, on
         <div className="pf-panel-body">
           {activeTab === 'timeline' && <TimelineTab plan={plan} />}
           {activeTab === 'economics' && <EconomicsTab plan={plan} />}
+          {activeTab === 'ranking' && <RankingTab plan={plan} />}
           {activeTab === 'risk' && <RiskTab plan={plan} />}
           {activeTab === 'why' && <WhyTab plan={plan} />}
           {activeTab === 'intel' && <IntelTab plan={plan} />}
@@ -1386,6 +1666,7 @@ export const InspectPanel: React.FC<InspectPanelProps> = ({ plan, pinned, onTogg
               {([
                 ['timeline', 'Timeline'],
                 ['economics', 'Economics'],
+                ['ranking', 'Ranking'],
                 ['risk', 'Risk'],
                 ['why', 'Why This Plan'],
                 ['intel', 'Intel'],
@@ -1406,6 +1687,7 @@ export const InspectPanel: React.FC<InspectPanelProps> = ({ plan, pinned, onTogg
             <div className="pf-panel-body">
               {activeTab === 'timeline' && <TimelineTab plan={plan} />}
               {activeTab === 'economics' && <EconomicsTab plan={plan} />}
+              {activeTab === 'ranking' && <RankingTab plan={plan} />}
               {activeTab === 'risk' && <RiskTab plan={plan} />}
               {activeTab === 'why' && <WhyTab plan={plan} />}
               {activeTab === 'intel' && <IntelTab plan={plan} />}

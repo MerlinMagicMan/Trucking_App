@@ -3,8 +3,43 @@ import type { Plan, PreflightPreferences, GeneratePlansResponse, GeneratePlansRe
 import { getDataClient } from '../services/dataClient';
 import { PreflightSetup } from '../components/preflight/PreflightSetup';
 import { PreflightResults } from '../components/preflight/PreflightResults';
+import { ComparePanel } from '../components/preflight/ComparePanel';
 import { InspectPanelInline } from '../components/preflight/InspectPanel';
+import { rankPlans } from '../services/planRanking';
+import { generatePlanExplanation } from '../services/planExplanation';
 import '../styles/preflight.css';
+
+/**
+ * Preflight ranking adapter (NEXT-002 E2):
+ * If plans already have ranking_breakdown (demo mode), only fill missing explanation.
+ * If plans lack ranking_breakdown (live mode), rank + explain.
+ */
+function ensureRanked(plans: Plan[]): Plan[] {
+  if (plans.length === 0) return plans;
+
+  const needsRanking = !plans[0].ranking_breakdown;
+
+  if (needsRanking) {
+    const ranked = rankPlans(plans);
+    ranked.forEach((plan, i) => {
+      if (plan.ranking_breakdown && !plan.ranking_explanation) {
+        plan.ranking_explanation = generatePlanExplanation(plan, plan.ranking_breakdown, i + 1);
+      }
+    });
+    return ranked;
+  }
+
+  // Already ranked — only fill missing explanations
+  return plans.map((plan, i) => {
+    if (plan.ranking_breakdown && !plan.ranking_explanation) {
+      return {
+        ...plan,
+        ranking_explanation: generatePlanExplanation(plan, plan.ranking_breakdown, i + 1),
+      };
+    }
+    return plan;
+  });
+}
 
 export const PreflightPage: React.FC = () => {
   const [response, setResponse] = useState<GeneratePlansResponse | null>(null);
@@ -12,6 +47,7 @@ export const PreflightPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastUpdated, setLastUpdated] = useState<string | null>(null);
   const [inspectedPlan, setInspectedPlan] = useState<Plan | null>(null);
+  const [viewMode, setViewMode] = useState<'list' | 'compare'>('list');
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -60,8 +96,14 @@ export const PreflightPage: React.FC = () => {
       };
 
       const result = await getDataClient().generatePlans(request);
+
+      // NEXT-002 E2: Preflight-layer ranking adapter
+      result.plans = ensureRanked(result.plans);
+
       setResponse(result);
       setLastUpdated(new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }));
+      // Default to compare if 3+ plans, list otherwise
+      setViewMode(result.plans.length >= 3 ? 'compare' : 'list');
       // Auto-select first plan on generate
       if (result.plans.length > 0) {
         setInspectedPlan(result.plans[0]);
@@ -85,6 +127,8 @@ export const PreflightPage: React.FC = () => {
     setInspectedPlan(null);
   };
 
+  const showCompareToggle = response && response.plans.length >= 2;
+
   return (
     <div className={`pf-workspace ${inspectedPlan ? 'has-inspect' : ''}`}>
       <PreflightSetup
@@ -101,11 +145,45 @@ export const PreflightPage: React.FC = () => {
             <strong>Error:</strong> {error}
           </div>
         )}
-        <PreflightResults
-          response={response}
-          inspectedPlan={inspectedPlan}
-          onInspect={handleInspect}
-        />
+
+        {/* View mode toggle */}
+        {showCompareToggle && (
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '12px' }}>
+            <button
+              className={`pf-horizon-btn ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+              type="button"
+            >
+              List
+            </button>
+            <button
+              className={`pf-horizon-btn ${viewMode === 'compare' ? 'active' : ''}`}
+              onClick={() => setViewMode('compare')}
+              type="button"
+            >
+              Compare
+            </button>
+          </div>
+        )}
+
+        {viewMode === 'compare' && response && response.plans.length >= 2 ? (
+          <>
+            {response.warnings.length > 0 && (
+              <div className="pf-warnings">
+                {response.warnings.map((w, i) => (
+                  <div key={i} className="pf-warning">{w}</div>
+                ))}
+              </div>
+            )}
+            <ComparePanel plans={response.plans} onSelectPlan={handleInspect} />
+          </>
+        ) : (
+          <PreflightResults
+            response={response}
+            inspectedPlan={inspectedPlan}
+            onInspect={handleInspect}
+          />
+        )}
       </div>
 
       {/* Inline inspect panel (right column on desktop) */}

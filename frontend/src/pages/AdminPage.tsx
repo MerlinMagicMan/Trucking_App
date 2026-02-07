@@ -20,37 +20,162 @@ import {
 import { getDataClient } from '../services/dataClient';
 import '../styles/preview.css';
 
+// Demo localStorage keys for integrity checking
+const DEMO_KEYS = {
+  config: 'demo_v1_config',
+  orgs: 'demo_v1_orgs',
+  trucks: 'demo_v1_trucks',
+  routes: 'demo_v1_routes',
+  planHistory: 'demo_v1_plan_history',
+  outcomes: 'demo_v1_outcomes',
+  predictionSnapshots: 'demo_v1_prediction_snapshots',
+  decisions: 'demo_v1_decisions',
+  activeSnapshot: 'demo_v1_active_snapshot',
+};
+
+interface DataStats {
+  orgs: number;
+  trucks: number;
+  routes: number;
+  history: number;
+  outcomes: number;
+  decisions: number;
+  snapshots: number;
+  activeSnapshot: boolean;
+}
+
+interface IntegrityStatus {
+  healthy: boolean;
+  issues: string[];
+}
+
+type ApiHealth = 'checking' | 'healthy' | 'unreachable' | 'error';
+
 export const AdminPage: React.FC = () => {
   const [demoEnabled, setDemoEnabled] = useState(getDemoMode());
   const [apiUrl, setApiUrl] = useState(getApiBaseUrl() || '');
   const [adminOverride, setAdminOverrideState] = useState(getAdminOverride());
   const [demoActive, setDemoActiveState] = useState(isDemoActive());
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
-  const [stats, setStats] = useState<{ orgs: number; trucks: number; routes: number; history: number } | null>(null);
+  const [stats, setStats] = useState<DataStats | null>(null);
+  const [apiHealth, setApiHealth] = useState<ApiHealth>('checking');
+  const [apiLastChecked, setApiLastChecked] = useState<string | null>(null);
+  const [integrity, setIntegrity] = useState<IntegrityStatus>({ healthy: true, issues: [] });
 
-  // Load stats on mount
+  // Load stats and health on mount
   useEffect(() => {
     loadStats();
+    checkApiHealth();
+    checkIntegrity();
   }, []);
 
   const loadStats = async () => {
     try {
       const client = getDataClient();
-      const [orgs, trucks, routes, history] = await Promise.all([
+      const [orgs, trucks, routes, history, outcomeSummary] = await Promise.all([
         client.getOrgs().catch(() => []),
         client.getTrucks().catch(() => []),
         client.getRoutes().catch(() => []),
         client.getPlanHistory().catch(() => []),
+        client.getOutcomeSummary().catch(() => []),
       ]);
+
+      // Count snapshots from localStorage for demo mode
+      const snapshotsRaw = localStorage.getItem(DEMO_KEYS.predictionSnapshots);
+      const snapshots = snapshotsRaw ? JSON.parse(snapshotsRaw) : [];
+
+      // Count decisions from localStorage for demo mode
+      const decisionsRaw = localStorage.getItem(DEMO_KEYS.decisions);
+      const decisionsArr = decisionsRaw ? JSON.parse(decisionsRaw) : [];
+
+      // Check active snapshot
+      const activeSnapshot = localStorage.getItem(DEMO_KEYS.activeSnapshot) !== null;
+
       setStats({
         orgs: orgs.length,
         trucks: trucks.length,
         routes: routes.length,
         history: history.length,
+        outcomes: outcomeSummary.length,
+        decisions: decisionsArr.length,
+        snapshots: snapshots.length,
+        activeSnapshot,
       });
     } catch {
       setStats(null);
     }
+  };
+
+  const checkApiHealth = async () => {
+    setApiHealth('checking');
+    const baseUrl = getApiBaseUrl();
+    if (!baseUrl) {
+      setApiHealth('unreachable');
+      setApiLastChecked(new Date().toLocaleTimeString());
+      return;
+    }
+    try {
+      const response = await fetch(`${baseUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000),
+      });
+      setApiLastChecked(new Date().toLocaleTimeString());
+      if (response.ok) {
+        setApiHealth('healthy');
+      } else {
+        setApiHealth('error');
+      }
+    } catch {
+      setApiHealth('unreachable');
+      setApiLastChecked(new Date().toLocaleTimeString());
+    }
+  };
+
+  const checkIntegrity = () => {
+    const issues: string[] = [];
+
+    // Check each localStorage key for valid JSON
+    Object.entries(DEMO_KEYS).forEach(([name, key]) => {
+      const data = localStorage.getItem(key);
+      if (data) {
+        try {
+          JSON.parse(data);
+        } catch {
+          issues.push(`Corrupted data in ${name} (${key})`);
+        }
+      }
+    });
+
+    // Check for orphaned plan_detail keys
+    const historyRaw = localStorage.getItem(DEMO_KEYS.planHistory);
+    const history = historyRaw ? JSON.parse(historyRaw) : [];
+    const historyIds = new Set(history.map((h: { id: number }) => h.id));
+
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('demo_v1_plan_detail_')) {
+        const id = parseInt(key.replace('demo_v1_plan_detail_', ''), 10);
+        if (!historyIds.has(id)) {
+          issues.push(`Orphaned plan detail: ${key}`);
+        }
+      }
+    }
+
+    // Check for required references
+    const orgsRaw = localStorage.getItem(DEMO_KEYS.orgs);
+    const trucksRaw = localStorage.getItem(DEMO_KEYS.trucks);
+    if (trucksRaw && orgsRaw) {
+      const orgs = JSON.parse(orgsRaw);
+      const trucks = JSON.parse(trucksRaw);
+      const orgIds = new Set(orgs.map((o: { id: string }) => o.id));
+      trucks.forEach((t: { org_id: string; name: string }) => {
+        if (!orgIds.has(t.org_id)) {
+          issues.push(`Truck "${t.name}" references missing org`);
+        }
+      });
+    }
+
+    setIntegrity({ healthy: issues.length === 0, issues });
   };
 
   const handleDemoToggle = () => {
@@ -70,9 +195,13 @@ export const AdminPage: React.FC = () => {
   };
 
   const handleApiUrlSave = () => {
-    setApiBaseUrl(apiUrl);
+    const trimmedUrl = apiUrl.trim();
+    setApiUrl(trimmedUrl);
+    setApiBaseUrl(trimmedUrl);
     setDemoActiveState(isDemoActive());
     setSeedStatus('API URL saved');
+    // Test connection after saving
+    setTimeout(() => checkApiHealth(), 100);
   };
 
   const handleAdminOverrideToggle = () => {
@@ -111,6 +240,54 @@ export const AdminPage: React.FC = () => {
     setSeedStatus('Sample CSV downloaded');
   };
 
+  const handleOneClickSetup = () => {
+    // Enable demo mode
+    setDemoMode(true);
+    setDemoEnabled(true);
+
+    // Enable admin override
+    setAdminOverride(true);
+    setAdminOverrideState(true);
+
+    // Seed all demo data
+    seedAllDemoData();
+
+    // Update state
+    setDemoActiveState(true);
+    setSeedStatus('Full access enabled + demo data seeded! Reloading...');
+    loadStats();
+    checkIntegrity();
+
+    // Reload to apply changes
+    setTimeout(() => {
+      window.location.reload();
+    }, 1000);
+  };
+
+  const handleRepairIntegrity = () => {
+    // Remove orphaned plan_detail keys
+    const historyRaw = localStorage.getItem(DEMO_KEYS.planHistory);
+    const history = historyRaw ? JSON.parse(historyRaw) : [];
+    const historyIds = new Set(history.map((h: { id: number }) => h.id));
+
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith('demo_v1_plan_detail_')) {
+        const id = parseInt(key.replace('demo_v1_plan_detail_', ''), 10);
+        if (!historyIds.has(id)) {
+          keysToRemove.push(key);
+        }
+      }
+    }
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+
+    // Re-check integrity
+    checkIntegrity();
+    loadStats();
+    setSeedStatus(`Repaired ${keysToRemove.length} orphaned entries`);
+  };
+
   return (
     <div className="page-container" style={{ maxWidth: '900px' }}>
       <div className="page-header">
@@ -120,45 +297,127 @@ export const AdminPage: React.FC = () => {
         </div>
       </div>
 
-      {/* Status Banner */}
+      {/* Health Check Section (C1) */}
       <div
         style={{
           padding: '16px 20px',
           borderRadius: '8px',
           marginBottom: '24px',
-          backgroundColor: demoActive ? '#eff6ff' : '#f0fdf4',
-          border: `1px solid ${demoActive ? '#bfdbfe' : '#bbf7d0'}`,
-          display: 'flex',
-          alignItems: 'center',
-          gap: '12px',
+          backgroundColor: '#f8fafc',
+          border: '1px solid #e2e8f0',
         }}
       >
-        <span
-          style={{
-            width: '10px',
-            height: '10px',
-            borderRadius: '50%',
-            backgroundColor: demoActive ? '#3b82f6' : '#22c55e',
-          }}
-        />
-        <span style={{ fontSize: '14px', fontWeight: 500, color: demoActive ? '#1e40af' : '#166534' }}>
-          {demoActive ? 'Demo Mode Active' : 'Live Mode Active'}
-        </span>
-        {adminOverride && (
-          <span
-            style={{
-              marginLeft: 'auto',
-              padding: '4px 10px',
-              backgroundColor: '#fef3c7',
-              color: '#92400e',
-              borderRadius: '4px',
-              fontSize: '12px',
-              fontWeight: 600,
-            }}
-          >
-            Admin Override
-          </span>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' }}>
+          {/* Mode Status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: demoActive ? '#3b82f6' : '#22c55e',
+              }}
+            />
+            <span style={{ fontSize: '14px', fontWeight: 500, color: demoActive ? '#1e40af' : '#166534' }}>
+              {demoActive ? 'Demo Mode' : 'Live Mode'}
+            </span>
+          </div>
+
+          {/* API Health */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor:
+                  apiHealth === 'healthy'
+                    ? '#22c55e'
+                    : apiHealth === 'checking'
+                      ? '#eab308'
+                      : '#ef4444',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '14px',
+                fontWeight: 500,
+                color:
+                  apiHealth === 'healthy'
+                    ? '#166534'
+                    : apiHealth === 'checking'
+                      ? '#854d0e'
+                      : '#991b1b',
+              }}
+            >
+              API:{' '}
+              {apiHealth === 'checking'
+                ? 'Checking...'
+                : apiHealth === 'healthy'
+                  ? 'Healthy'
+                  : apiHealth === 'unreachable'
+                    ? 'Unreachable'
+                    : 'Error'}
+            </span>
+            {apiLastChecked && (
+              <span style={{ fontSize: '10px', color: '#94a3b8' }}>
+                @{apiLastChecked}
+              </span>
+            )}
+            <button
+              onClick={checkApiHealth}
+              style={{
+                padding: '2px 8px',
+                fontSize: '11px',
+                backgroundColor: '#e2e8f0',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+              }}
+            >
+              Retry
+            </button>
+          </div>
+
+          {/* Data Integrity */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                backgroundColor: integrity.healthy ? '#22c55e' : '#ef4444',
+              }}
+            />
+            <span
+              style={{
+                fontSize: '14px',
+                fontWeight: 500,
+                color: integrity.healthy ? '#166534' : '#991b1b',
+              }}
+            >
+              Data: {integrity.healthy ? 'OK' : `${integrity.issues.length} issues`}
+            </span>
+          </div>
+
+          {/* Badges */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px' }}>
+            {adminOverride && (
+              <span
+                style={{
+                  padding: '4px 10px',
+                  backgroundColor: '#fef3c7',
+                  color: '#92400e',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                }}
+              >
+                Admin Override
+              </span>
+            )}
+          </div>
+        </div>
       </div>
 
       {seedStatus && (
@@ -177,27 +436,117 @@ export const AdminPage: React.FC = () => {
         </div>
       )}
 
-      {/* Data Stats */}
+      {/* Data Integrity Section (C2) */}
       {stats && (
-        <div className="preview-metrics" style={{ marginBottom: '24px' }}>
-          <div className="preview-metric-card" style={{ background: '#fff' }}>
-            <div className="preview-metric-label">Organizations</div>
-            <div className="preview-metric-value">{stats.orgs}</div>
+        <div className="settings-section" style={{ marginBottom: '24px' }}>
+          <h3 className="settings-section-title">Data Inventory</h3>
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+              gap: '12px',
+              marginBottom: '16px',
+            }}
+          >
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Organizations</div>
+              <div className="preview-metric-value">{stats.orgs}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Trucks</div>
+              <div className="preview-metric-value">{stats.trucks}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Routes</div>
+              <div className="preview-metric-value">{stats.routes}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Plan History</div>
+              <div className="preview-metric-value">{stats.history}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Outcomes</div>
+              <div className="preview-metric-value">{stats.outcomes}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Decisions</div>
+              <div className="preview-metric-value">{stats.decisions}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Snapshots</div>
+              <div className="preview-metric-value">{stats.snapshots}</div>
+            </div>
+            <div className="preview-metric-card" style={{ background: stats.activeSnapshot ? '#f0fdf4' : '#fff', padding: '12px' }}>
+              <div className="preview-metric-label">Active Snapshot</div>
+              <div className="preview-metric-value">{stats.activeSnapshot ? 'Yes' : 'No'}</div>
+            </div>
           </div>
-          <div className="preview-metric-card" style={{ background: '#fff' }}>
-            <div className="preview-metric-label">Trucks</div>
-            <div className="preview-metric-value">{stats.trucks}</div>
-          </div>
-          <div className="preview-metric-card" style={{ background: '#fff' }}>
-            <div className="preview-metric-label">Routes</div>
-            <div className="preview-metric-value">{stats.routes}</div>
-          </div>
-          <div className="preview-metric-card" style={{ background: '#fff' }}>
-            <div className="preview-metric-label">Plan History</div>
-            <div className="preview-metric-value">{stats.history}</div>
-          </div>
+
+          {/* Integrity Issues */}
+          {!integrity.healthy && (
+            <div
+              style={{
+                padding: '12px 16px',
+                backgroundColor: '#fef2f2',
+                border: '1px solid #fecaca',
+                borderRadius: '6px',
+                marginBottom: '12px',
+              }}
+            >
+              <div style={{ fontWeight: 600, fontSize: '13px', color: '#991b1b', marginBottom: '8px' }}>
+                Data Integrity Issues Detected
+              </div>
+              <ul style={{ margin: 0, paddingLeft: '16px', fontSize: '12px', color: '#dc2626' }}>
+                {integrity.issues.map((issue, i) => (
+                  <li key={i}>{issue}</li>
+                ))}
+              </ul>
+              <button
+                onClick={handleRepairIntegrity}
+                style={{
+                  marginTop: '12px',
+                  padding: '6px 12px',
+                  backgroundColor: '#dc2626',
+                  color: '#fff',
+                  border: 'none',
+                  borderRadius: '4px',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                }}
+              >
+                Repair Issues
+              </button>
+            </div>
+          )}
         </div>
       )}
+
+      {/* One-Click Setup (C3) */}
+      <div className="settings-section" style={{ backgroundColor: '#fefce8', border: '1px solid #fef08a', borderRadius: '8px', padding: '20px' }}>
+        <h3 className="settings-section-title" style={{ marginTop: 0 }}>Quick Setup</h3>
+        <p style={{ fontSize: '13px', color: '#713f12', marginBottom: '16px' }}>
+          New to the app? One click enables demo mode, admin access, and seeds sample data.
+        </p>
+        <button
+          onClick={handleOneClickSetup}
+          style={{
+            padding: '12px 24px',
+            backgroundColor: '#f59e0b',
+            color: '#fff',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 600,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+          }}
+        >
+          <span style={{ fontSize: '18px' }}>&#9889;</span>
+          Enable Full Access + Seed Everything
+        </button>
+      </div>
 
       {/* Demo Mode Toggle */}
       <div className="settings-section">

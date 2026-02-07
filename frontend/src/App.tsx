@@ -39,7 +39,8 @@ function App() {
             <Route path="/copilot" element={<CopilotPage />} />
             <Route path="/intel" element={<IntelPage />} />
             <Route path="/routes" element={<RoutesPage />} />
-            <Route path="/assets/trucks" element={<TrucksPage />} />
+            <Route path="/trucks" element={<TrucksPage />} />
+            <Route path="/assets/trucks" element={<Navigate to="/trucks" replace />} />
             <Route path="/maintenance" element={<MaintenancePage />} />
             <Route path="/plans/history" element={<PlanHistoryPage />} />
             <Route path="/reports" element={<ReportsPage />} />

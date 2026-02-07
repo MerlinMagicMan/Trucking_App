@@ -58,6 +58,11 @@ export const PlanColumn: React.FC<PlanColumnProps> = ({ plan, rank, onInspect, i
       {/* Route name */}
       <div className="pf-plan-route">{getPlanName(plan)}</div>
 
+      {/* Ranking explanation (NEXT-002) */}
+      {plan.ranking_explanation && (
+        <div className="pf-ranking-explanation">{plan.ranking_explanation}</div>
+      )}
+
       {/* Compact metrics grid */}
       <div className="pf-metrics-compact">
         <div className="pf-mc"><span className="l">Net</span><span className="v">${plan.net_profit_usd.toFixed(0)}</span></div>

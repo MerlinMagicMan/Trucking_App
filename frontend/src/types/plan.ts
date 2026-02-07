@@ -164,6 +164,30 @@ export interface Plan {
   estimates_raw?: PlanEstimates;
   estimates_calibrated?: PlanEstimates | null;
   calibration_meta?: CalibrationAppliedMeta;
+
+  // NEXT-002: Ranking (optional, attached by ranking engine)
+  profit_per_day_cents?: number;
+  ranking_explanation?: string;
+  ranking_breakdown?: RankingBreakdown;
+}
+
+// NEXT-002: Ranking breakdown (v1.1 — integer cents, batch-normalized)
+
+export interface RankingAvailability {
+  has_confidence_score: boolean;
+  reload_bonus_available: boolean;
+  dwell_penalty_available: boolean;
+}
+
+export interface RankingBreakdown {
+  profit_per_day_cents: number;
+  base_profit_score: number;       // 0-100, within-batch normalized
+  confidence_multiplier: number;   // 0.7-1.0
+  deadhead_penalty: number;        // 0-15
+  reload_bonus: number;            // 0-10 (0 when data unavailable)
+  dwell_penalty: number;           // 0-10 (0 when no wait blocks)
+  final_score: number;             // 0-100
+  availability: RankingAvailability;
 }
 
 export interface GeneratePlansRequest {
@@ -246,8 +270,22 @@ export interface OutcomeReport {
   plan_id: string;
   prediction_snapshot_id?: string | null;
   outcome_id?: string | null;
+  outcome_status?: 'pending' | 'partial' | 'complete' | null;
   predicted_summary: Record<string, any>;
   actual_summary: Record<string, any>;
+  // Editable actuals for form
+  actuals?: {
+    revenue?: string | null;
+    fuel_spend?: string | null;
+    tolls?: string | null;
+    maintenance?: string | null;
+    other_costs?: string | null;
+    miles_loaded?: number | null;
+    miles_deadhead?: number | null;
+    drive_min?: number | null;
+    wait_min?: number | null;
+    notes?: string | null;
+  };
   deltas: VarianceDelta[];
   flags: OutcomeFlag[];
   explanations: string[];

@@ -10,6 +10,13 @@ import type {
   GeneratePlansRequest,
   GeneratePlansResponse,
   CalibrationReport,
+  PredictionSnapshot,
+  PlanOutcome,
+  OutcomeReport,
+  OutcomeSummaryItem,
+  DecisionCreate,
+  DecisionResponse,
+  RiskOutcomeReport,
 } from '../types/plan';
 import type { CopilotResponse } from '../types/copilot';
 import type {
@@ -17,8 +24,9 @@ import type {
   LaneIntelData,
   MarketIntelData,
   DestinationIntelData,
+  NegotiationIntelData,
 } from '../types/intel';
-import type { IngestionStatus } from './api';
+import type { IngestionStatus, PlanTrustReport } from './api';
 import { isDemoActive } from './demoConfig';
 
 // ---- Input Types ----
@@ -51,6 +59,25 @@ export interface HealthResponse {
   message?: string;
 }
 
+export interface CreateOutcomeInput {
+  plan_id: string;
+  prediction_snapshot_id?: string;
+}
+
+export interface UpdateOutcomeInput {
+  actual_revenue?: string;
+  actual_fuel_spend?: string;
+  actual_tolls?: string;
+  actual_maintenance?: string;
+  actual_other_costs?: string;
+  actual_miles_loaded?: number;
+  actual_miles_deadhead?: number;
+  actual_drive_min?: number;
+  actual_wait_min?: number;
+  notes?: string;
+  status?: string;
+}
+
 // ---- DataClient Interface ----
 
 export interface DataClient {
@@ -72,7 +99,23 @@ export interface DataClient {
   getLaneIntel(origin: string, dest: string): Promise<IntelResponse<LaneIntelData> | null>;
   getMarketIntel(geohash: string): Promise<IntelResponse<MarketIntelData> | null>;
   getDestinationIntel(geohash: string): Promise<IntelResponse<DestinationIntelData> | null>;
+  getNegotiationIntel(origin: string, dest: string, offeredRateUsd: number): Promise<IntelResponse<NegotiationIntelData> | null>;
   getCalibrationReport(windowDays?: number): Promise<CalibrationReport | null>;
+
+  // Outcomes (Stratum 4A)
+  getOutcomeReport(planId: string): Promise<OutcomeReport | null>;
+  createOutcome(body: CreateOutcomeInput): Promise<PlanOutcome>;
+  updateOutcome(outcomeId: string, body: UpdateOutcomeInput): Promise<PlanOutcome>;
+  getOutcomeSummary(limit?: number): Promise<OutcomeSummaryItem[]>;
+  createPredictionSnapshot(planId: string): Promise<PredictionSnapshot>;
+
+  // Decisions (Stratum 4B)
+  createDecision(body: DecisionCreate): Promise<DecisionResponse>;
+  getDecisions(planId: string): Promise<DecisionResponse[]>;
+
+  // Trust & Risk (Stratum 5C/5D)
+  getTrustReport(planId: string, windowDays?: number): Promise<PlanTrustReport | null>;
+  getRiskOutcomeReport(planId: string): Promise<RiskOutcomeReport | null>;
 
   // System
   getIngestionStatus(): Promise<IngestionStatus>;

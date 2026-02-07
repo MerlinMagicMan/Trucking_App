@@ -2,12 +2,11 @@
  * IntelPage - Lane/Market/Destination intelligence (PREVIEW-001)
  * Premium feature: query intel endpoints for lane analytics
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { PreviewBadge } from '../components/shared/PreviewBadge';
 import { UpgradeCTA } from '../components/shared/UpgradeCTA';
-import { getDataClient } from '../services/dataClient';
-import { fetchNegotiationIntel } from '../services/intel';
+import { getDataClient, isDemoActive } from '../services/dataClient';
 import type {
   IntelResponse,
   LaneIntelData,
@@ -28,8 +27,10 @@ const SAMPLE_LANES = [
 
 export const IntelPage: React.FC = () => {
   const { canAccess, isPremium } = useEntitlement();
-  const [origin, setOrigin] = useState('');
-  const [destination, setDestination] = useState('');
+  // Demo mode: auto-populate with first sample lane for one-click testing
+  const demoMode = isDemoActive();
+  const [origin, setOrigin] = useState(demoMode ? SAMPLE_LANES[0].origin : '');
+  const [destination, setDestination] = useState(demoMode ? SAMPLE_LANES[0].dest : '');
   const [loadState, setLoadState] = useState<LoadState>('idle');
 
   const [laneData, setLaneData] = useState<IntelResponse<LaneIntelData> | null>(null);
@@ -37,17 +38,19 @@ export const IntelPage: React.FC = () => {
   const [destData, setDestData] = useState<IntelResponse<DestinationIntelData> | null>(null);
   const [negotiationData, setNegotiationData] = useState<IntelResponse<NegotiationIntelData> | null>(null);
 
-  const handleSearch = async () => {
-    if (!origin || !destination) return;
+  const handleSearch = async (originGh?: string, destGh?: string) => {
+    const o = originGh ?? origin;
+    const d = destGh ?? destination;
+    if (!o || !d) return;
 
     setLoadState('loading');
     try {
       const client = getDataClient();
       const [lane, market, dest, nego] = await Promise.all([
-        client.getLaneIntel(origin, destination),
-        client.getMarketIntel(origin),
-        client.getDestinationIntel(destination),
-        fetchNegotiationIntel(origin, destination, 2500), // Example offered rate (still uses live API)
+        client.getLaneIntel(o, d),
+        client.getMarketIntel(o),
+        client.getDestinationIntel(d),
+        client.getNegotiationIntel(o, d, 2500),
       ]);
 
       setLaneData(lane);
@@ -59,6 +62,14 @@ export const IntelPage: React.FC = () => {
       setLoadState('offline');
     }
   };
+
+  // Demo mode: auto-fetch on load for immediate one-click demo experience
+  useEffect(() => {
+    if (demoMode && canAccess('intel') && origin && destination && loadState === 'idle') {
+      handleSearch(origin, destination);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoMode, canAccess('intel')]);
 
   const handleSampleClick = (sample: { origin: string; dest: string }) => {
     setOrigin(sample.origin);
@@ -114,7 +125,7 @@ export const IntelPage: React.FC = () => {
               <button
                 className="preview-search-btn"
                 style={{ width: '100%' }}
-                onClick={handleSearch}
+                onClick={() => handleSearch()}
                 disabled={!origin || !destination || loadState === 'loading'}
               >
                 {loadState === 'loading' ? 'Loading...' : 'Search'}

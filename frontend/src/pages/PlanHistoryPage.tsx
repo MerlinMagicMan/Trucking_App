@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import type { PlanHistoryItem, PlanHistoryDetail } from '../types/org';
 import type { OutcomeSummaryItem, CalibrationReport } from '../types/plan';
 import { getDataClient } from '../services/dataClient';
-import { fetchOutcomeSummary } from '../services/api';
 
 const VarianceBadge: React.FC<{ pct: string | null | undefined }> = ({ pct }) => {
   if (pct == null) return <span style={{ color: '#94a3b8', fontSize: '12px' }}>—</span>;
@@ -35,12 +34,13 @@ export const PlanHistoryPage: React.FC = () => {
   const [calibration, setCalibration] = useState<CalibrationReport | null>(null);
 
   useEffect(() => {
-    getDataClient().getPlanHistory()
+    const client = getDataClient();
+    client.getPlanHistory()
       .then(setItems)
       .catch(() => setItems([]))
       .finally(() => setLoading(false));
-    fetchOutcomeSummary(50).then(setOutcomes).catch(() => setOutcomes([]));
-    getDataClient().getCalibrationReport(30).then(setCalibration).catch(() => setCalibration(null));
+    client.getOutcomeSummary(50).then(setOutcomes).catch(() => setOutcomes([]));
+    client.getCalibrationReport(30).then(setCalibration).catch(() => setCalibration(null));
   }, []);
 
   const handleView = async (id: number) => {
